@@ -171,6 +171,13 @@ export async function commitImport(db: Db, args: CommitImportArgs): Promise<Impo
       reconciliation: plan.reconciliation,
       undone: false,
       undoneAt: null,
+      metaBefore: {
+        summary: meta.summary ?? null,
+        projects: meta.projects ?? [],
+        projectMap: meta.projectMap ?? {},
+        lastSyncAt: meta.lastSyncAt ?? null,
+        lastSummaryAt: meta.lastSummaryAt ?? null,
+      },
       revisionBefore: meta.revision,
       revisionAfter: meta.revision + 1,
       totalBeforeCents: args.totals?.before,
@@ -243,7 +250,11 @@ export async function undoImport(db: Db, uid: string, importId: string, force = 
     }
     ops.forEach((f) => f())
     tx.set(paths.importDoc(uid, importId), clean({ ...recData, undone: true, undoneAt: now }))
-    tx.set(paths.sync(uid), clean({ ...meta, revision: meta.revision + 1 }) as unknown as DocData)
+    // A full undo also puts back the dashboard totals, projects and sync times saved by this import.
+    const back = rec.metaBefore && meta.lastImportId === importId
+      ? { summary: rec.metaBefore.summary, projects: rec.metaBefore.projects, projectMap: rec.metaBefore.projectMap ?? meta.projectMap ?? {}, lastSyncAt: rec.metaBefore.lastSyncAt, lastSummaryAt: rec.metaBefore.lastSummaryAt ?? null, lastImportId: null }
+      : {}
+    tx.set(paths.sync(uid), clean({ ...meta, ...back, revision: meta.revision + 1 }) as unknown as DocData)
     return { deleted, restored, skippedEdited }
   })
 }

@@ -159,6 +159,14 @@ export interface ImportRecord {
   /** Tracked total before and after this import (cents) */
   totalBeforeCents?: number
   totalAfterCents?: number
+  /** Dashboard summary / projects / sync times as they were before this import (restored by undo) */
+  metaBefore?: {
+    summary: ParsedSummary | null
+    projects: ParsedProject[]
+    projectMap?: Record<string, string[]>
+    lastSyncAt: number | null
+    lastSummaryAt?: number | null
+  } | null
   revisionBefore: number
   revisionAfter: number
 }

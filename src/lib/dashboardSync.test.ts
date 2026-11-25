@@ -354,3 +354,22 @@ describe('older snapshots never regress saved totals', () => {
     expect(meta.projects[0].earningsCents).toBe(400000)
   })
 })
+
+describe('undo is a full revert', () => {
+  it('restores payments AND the dashboard totals/projects saved by that import', async () => {
+    const { undoImport } = await import('./store')
+    const db = await seeded()
+    const first = await sync(db, page(ALL, { lifetime: '$7,085.04' }))
+    const metaAfterFirst = JSON.parse(JSON.stringify(db.docs.get(`users/${UID}/meta/sync`)!.data))
+    const grown = ALL.map((r) => (r === R.draftCur ? { ...r, hours: '3.00', earned: '$255.00' } : r))
+    const second = await sync(db, page(grown, { lifetime: '$7,170.04', projects: [{ name: 'Alpha', total: '$4,085.00', active: true }] }))
+    expect(second.res.record).not.toBeNull()
+    await undoImport(db, UID, second.res.record!.id)
+    const meta = db.docs.get(`users/${UID}/meta/sync`)!.data as Record<string, unknown>
+    expect((meta.summary as { lifetimeCents: number }).lifetimeCents).toBe(708504)
+    expect(meta.projects).toEqual(metaAfterFirst.projects)
+    expect(meta.lastSyncAt).toBe(metaAfterFirst.lastSyncAt)
+    expect(stored(db).find((p) => p.id === 'h1')!.earningsCents).toBe(17000)
+    void first
+  })
+})
