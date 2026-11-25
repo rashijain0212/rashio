@@ -212,7 +212,21 @@ export default function ImportSync() {
   }
 
   const undo = async (id: string) => {
-    if (!window.confirm('Undo this import? Payments it created are removed and payments it changed are restored.')) return
+    const rec = imports.find((i) => i.id === id)
+    if (!rec) return
+    const parts: string[] = []
+    if (rec.counts.created) parts.push(`${rec.counts.created} payment${rec.counts.created === 1 ? '' : 's'} it added will be deleted`)
+    if (rec.counts.updated) parts.push(`${rec.counts.updated} payment${rec.counts.updated === 1 ? '' : 's'} it updated will go back to their earlier values`)
+    const delta = rec.totalAfterCents !== undefined && rec.totalBeforeCents !== undefined ? rec.totalBeforeCents - rec.totalAfterCents : null
+    const msg = [
+      `Undo the import from ${new Date(rec.createdAt).toLocaleString()}?`,
+      '',
+      ...parts.map((p) => `• ${p}`),
+      delta !== null ? `• Your tracked total changes by ${signed(delta)}` : '',
+      '',
+      'Only do this if that import was wrong. To bring payments up to date, just paste the dashboard again — no undo needed.',
+    ].filter((l, i, a) => l !== '' || (a[i - 1] ?? '') !== '').join('\n')
+    if (!window.confirm(msg)) return
     try {
       const r = await undoImport(firestoreDb, uid, id)
       setMsg({ kind: 'ok', text: `Undone: ${r.deleted} removed, ${r.restored} restored.` })
@@ -408,9 +422,11 @@ export default function ImportSync() {
                     <Td className="num whitespace-nowrap">{r.totalAfterCents !== undefined && r.totalBeforeCents !== undefined ? signed(r.totalAfterCents - r.totalBeforeCents) : '—'}</Td>
                     <Td className="num hidden sm:table-cell">{formatCents(r.summary?.lifetimeCents ?? null)}</Td>
                     <Td className="py-0.5 text-right">
-                      {r.undone ? <span className="text-xs no-underline">undone</span> : (
-                        <Button variant="ghost" size="sm" onClick={() => undo(r.id)} disabled={!r.counts.created && !r.counts.updated} aria-label="Undo this import"><RotateCcw /><span className="hidden sm:inline">Undo</span></Button>
-                      )}
+                      {r.undone ? (
+                        <span className="text-xs no-underline">undone</span>
+                      ) : r.id === imports.find((i) => !i.undone)?.id && (r.counts.created || r.counts.updated) ? (
+                        <Button variant="ghost" size="sm" onClick={() => undo(r.id)} title="Undo this import"><RotateCcw /> Undo</Button>
+                      ) : null}
                     </Td>
                   </tr>
                 ))}

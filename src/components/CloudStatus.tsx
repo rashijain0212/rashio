@@ -49,7 +49,7 @@ export function SyncSummary() {
       <CloudStatusBadge />
       <div><span className="font-semibold text-ink">{payments.length}</span> payments saved</div>
       <div title={meta.lastSyncAt ? new Date(meta.lastSyncAt).toLocaleString() : undefined}>Payments synced <span className="font-medium text-ink">{timeAgo(meta.lastSyncAt)}</span></div>
-      {meta.lastSummaryAt && <div title={new Date(meta.lastSummaryAt).toLocaleString()}>dashboard totals saved <span className="font-medium text-ink">{timeAgo(meta.lastSummaryAt)}</span></div>}
+      {meta.lastSummaryAt && <div title={new Date(meta.lastSummaryAt).toLocaleString()}>Dashboard totals saved <span className="font-medium text-ink">{timeAgo(meta.lastSummaryAt)}</span></div>}
       {r.diff !== null && (
         r.diff === 0
           ? <div className="text-paid-ink">✓ Matches dashboard total</div>

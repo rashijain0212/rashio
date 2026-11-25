@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Download, FileJson, Upload } from 'lucide-react'
 import { friendlyError, useAuth, useData } from '@/hooks/data'
 import { markSheetSynced, useSheetsSync } from '@/hooks/sheets'
-import { buildSheetModel, spreadsheetIdFrom, syncSpreadsheet } from '@/lib/sheets'
-import { connectGoogleSheets, createSpreadsheet, sheetsApi } from '@/lib/sheetsClient'
+import { buildSheetModel, syncSpreadsheet } from '@/lib/sheets'
+import { connectGoogleSheets, createSpreadsheet, pickSpreadsheet, sheetsApi } from '@/lib/sheetsClient'
 import { PageHeader } from '@/components/PageHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -195,14 +195,13 @@ export default function SettingsPage() {
 }
 
 function SheetsCard() {
-  const { uid, settings } = useData()
+  const { uid, settings, payments, meta } = useData()
   const sheets = useSheetsSync()
-  const [link, setLink] = useState(settings.sheetsSpreadsheetId ? `https://docs.google.com/spreadsheets/d/${settings.sheetsSpreadsheetId}` : '')
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
-  useEffect(() => {
-    setLink(settings.sheetsSpreadsheetId ? `https://docs.google.com/spreadsheets/d/${settings.sheetsSpreadsheetId}` : '')
-  }, [settings.sheetsSpreadsheetId])
+  const id = settings.sheetsSpreadsheetId
+  const ready = !!id && settings.sheetsFileAccess === true
+  const url = id ? `https://docs.google.com/spreadsheets/d/${id}` : null
 
   const save = async (patch: Partial<typeof settings>) => saveSettings(firestoreDb, uid, { ...settings, ...patch })
 
@@ -218,35 +217,40 @@ function SheetsCard() {
     }
   }
 
-  const connectAndSync = () =>
+  const syncWithId = async (sheetId: string, extra: Partial<typeof settings> = {}) => {
+    const model = buildSheetModel(payments, meta.projects, settings.cycleStartDay)
+    const res = await syncSpreadsheet(sheetsApi(sheetId), model)
+    markSheetSynced(meta.revision)
+    await save({ ...extra, sheetsSpreadsheetId: sheetId, sheetsLastSyncAt: Date.now(), sheetsLastError: null })
+    return `Google Sheet updated (${res.monthsWritten.length} month tabs${res.createdTabs.length ? `; added ${res.createdTabs.join(', ')}` : ''}).`
+  }
+
+  const choose = () =>
     run(async () => {
-      const id = spreadsheetIdFrom(link)
-      if (!id) throw new Error('Paste the full Google Sheets link (https://docs.google.com/spreadsheets/d/…).')
-      await connectGoogleSheets() // popup: inside the click
-      if (id !== settings.sheetsSpreadsheetId) await save({ sheetsSpreadsheetId: id, sheetsAutoSync: settings.sheetsAutoSync ?? true })
-      const msg = await syncWithId(id)
-      setNote({ ok: true, text: msg })
+      await connectGoogleSheets() // Google popup: must start inside the click
+      const picked = await pickSpreadsheet()
+      if (!picked) return setNote({ ok: false, text: 'No spreadsheet chosen.' })
+      const extra = { sheetsSpreadsheetName: picked.name, sheetsFileAccess: true, sheetsAutoSync: settings.sheetsAutoSync ?? true }
+      await save({ ...extra, sheetsSpreadsheetId: picked.id })
+      const msg = await syncWithId(picked.id, extra)
+      setNote({ ok: true, text: `“${picked.name}” connected. ${msg}` })
+    })
+
+  const syncNow = () =>
+    run(async () => {
+      if (!sheets.connected) await connectGoogleSheets()
+      setNote({ ok: true, text: await syncWithId(id!) })
     })
 
   const createNew = () =>
     run(async () => {
       await connectGoogleSheets()
-      const id = await createSpreadsheet('Rashio earnings')
-      await save({ sheetsSpreadsheetId: id, sheetsAutoSync: true })
-      setLink(`https://docs.google.com/spreadsheets/d/${id}`)
-      const msg = await syncWithId(id)
-      setNote({ ok: true, text: `Created a new spreadsheet in your Google Drive. ${msg}` })
+      const newId = await createSpreadsheet('Rashio earnings')
+      const extra = { sheetsSpreadsheetName: 'Rashio earnings', sheetsFileAccess: true, sheetsAutoSync: true }
+      await save({ ...extra, sheetsSpreadsheetId: newId })
+      const msg = await syncWithId(newId, extra)
+      setNote({ ok: true, text: `Created “Rashio earnings” in your Google Drive. ${msg}` })
     })
-
-  // The hook reads the saved id; when the id was just changed, sync directly with it.
-  const { payments, meta } = useData()
-  const syncWithId = async (id: string) => {
-    const model = buildSheetModel(payments, meta.projects, settings.cycleStartDay)
-    const res = await syncSpreadsheet(sheetsApi(id), model)
-    markSheetSynced(meta.revision)
-    await save({ sheetsSpreadsheetId: id, sheetsLastSyncAt: Date.now(), sheetsLastError: null })
-    return `Google Sheet updated (${res.monthsWritten.length} month tabs${res.createdTabs.length ? `; added ${res.createdTabs.join(', ')}` : ''}).`
-  }
 
   return (
     <Card className="mt-4">
@@ -256,26 +260,43 @@ function SheetsCard() {
           After every saved change — imports, edits, deletes, status changes — Rashio updates your spreadsheet: the monthly tabs, the Overview sections and a raw “Earnings data” tab.
           Your formulas, formatting and charts are kept; a new month tab is created by copying the latest one. Your cloud database stays the main copy.
         </p>
-        <div>
-          <Label htmlFor="s-sheet">Spreadsheet link</Label>
-          <Input id="s-sheet" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…" />
-        </div>
+
+        {id && !ready && (
+          <div className="rounded-lg bg-pending/70 px-3 py-2 text-pending-ink">
+            <b>One-time step:</b> Rashio now uses a safer permission that only covers the spreadsheet you choose. Click <b>Choose spreadsheet</b> and select{' '}
+            {url ? <a className="underline" href={url} target="_blank" rel="noreferrer">your earnings sheet</a> : 'your earnings sheet'} once.
+          </div>
+        )}
+
+        {ready && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-paid/60 px-3 py-2 text-paid-ink">
+            Connected to <b>{settings.sheetsSpreadsheetName || 'your spreadsheet'}</b>
+            {url && <a className="underline" href={url} target="_blank" rel="noreferrer">Open</a>}
+          </div>
+        )}
+
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={settings.sheetsAutoSync !== false} disabled={!settings.sheetsSpreadsheetId} onChange={(e) => save({ sheetsAutoSync: e.target.checked })} />
-          Update the spreadsheet automatically after each import
+          <input type="checkbox" checked={settings.sheetsAutoSync !== false} disabled={!ready} onChange={(e) => save({ sheetsAutoSync: e.target.checked })} />
+          Update the spreadsheet automatically after each change
         </label>
+
         <div className="flex flex-wrap gap-2">
-          <Button onClick={connectAndSync} disabled={busy || !link.trim()}>{busy ? 'Working…' : sheets.connected ? 'Sync now' : 'Connect & sync now'}</Button>
-          <Button variant="outline" onClick={createNew} disabled={busy}>Create a new spreadsheet</Button>
-          {settings.sheetsSpreadsheetId && (
-            <a className="inline-flex items-center px-2 text-sm text-accent underline" href={`https://docs.google.com/spreadsheets/d/${settings.sheetsSpreadsheetId}`} target="_blank" rel="noreferrer">Open spreadsheet</a>
+          {ready ? (
+            <>
+              <Button onClick={syncNow} disabled={busy}>{busy ? 'Working…' : 'Sync now'}</Button>
+              <Button variant="outline" onClick={choose} disabled={busy}>Choose a different spreadsheet</Button>
+            </>
+          ) : (
+            <Button onClick={choose} disabled={busy}>{busy ? 'Working…' : 'Choose spreadsheet'}</Button>
           )}
+          <Button variant="outline" onClick={createNew} disabled={busy}>Create a new spreadsheet</Button>
         </div>
+
         {note && <div className={note.ok ? 'rounded-lg bg-paid px-3 py-2 text-paid-ink' : 'rounded-lg bg-danger/10 px-3 py-2 text-danger'}>{note.text}</div>}
         <p className="text-[11px] text-ink-soft">
           {settings.sheetsLastSyncAt ? `Last updated ${new Date(settings.sheetsLastSyncAt).toLocaleString()}. ` : ''}
           {settings.sheetsLastError ? `Last problem: ${settings.sheetsLastError} ` : ''}
-          Uses your own Google sign-in (Google asks once for permission to edit spreadsheets; access is kept only in this browser tab for about an hour). The spreadsheet must be editable by the Google account you use for Rashio. No keys or passwords are stored.
+          Uses your own Google sign-in. Rashio can only open spreadsheets you choose here or that it created — not the rest of your Drive. Access lasts about an hour per browser tab; Google re-asks with a quick popup when needed. The spreadsheet must be editable by the Google account you use for Rashio.
         </p>
       </CardContent>
     </Card>

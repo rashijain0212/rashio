@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { ErrorBoundary } from './ErrorBoundary'
 import { AutoSheetSync } from './AutoSheetSync'
 import { CLOUD_ONLY, enableCloudOnlyAndReload } from '@/lib/firebase'
 import { AlertTriangle, BarChart3, CalendarRange, LayoutDashboard, ListChecks, LogOut, RefreshCw, Settings } from 'lucide-react'
 import { CloudStatusBadge, SyncSummary } from './CloudStatus'
-import { Button } from './ui/button'
 import { useAuth, useData } from '@/hooks/data'
 import { cn } from '@/lib/utils'
 
@@ -29,9 +28,6 @@ export function Layout() {
           <img src="/favicon.svg" alt="" className="size-7" />
           <span className="text-[15px] font-semibold tracking-tight">Rashio</span>
         </div>
-        <Button asChild variant="accent" className="mb-3 w-full">
-          <Link to="/import"><RefreshCw /> Import &amp; Sync</Link>
-        </Button>
         <nav className="flex flex-1 flex-col gap-0.5">
           {NAV.map(({ to, label, icon: Icon }) => (
             <NavLink
@@ -69,7 +65,6 @@ export function Layout() {
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <CloudStatusBadge compact />
-            <Button asChild variant="accent" size="sm"><Link to="/import"><RefreshCw /> Sync</Link></Button>
             <button onClick={signOut} aria-label="Sign out" className="rounded p-1.5 text-ink-soft hover:bg-support">
               <LogOut className="size-4" />
             </button>

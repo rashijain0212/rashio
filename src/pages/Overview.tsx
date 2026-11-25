@@ -10,7 +10,7 @@ import { Table, Td, Th, Empty } from '@/components/Table'
 import { StackedBars, TYPE_SERIES, activeSeries } from '@/components/Charts'
 import { cycleBucket, effectiveHourlyCents, groupBy, groupTotals, lifetimeTotals, monthBucket, rangeTotals, upcomingPayouts, emptyTotals, type Totals } from '@/lib/calc'
 import { projectRows } from '@/lib/projects'
-import { useReconciliation, timeAgo } from '@/components/CloudStatus'
+import { useReconciliation } from '@/components/CloudStatus'
 import { AlertTriangle } from 'lucide-react'
 import { formatCents } from '@/lib/money'
 import { cycleFor, cycleLabel, formatDate, monthLabel, todayISO, addDays, daysInclusive, monthBounds, ordinal } from '@/lib/dates'
@@ -133,7 +133,6 @@ export function Overview() {
       <PageHeader
         title="Overview"
         subtitle={<>{payments.length} payments saved · Last synced {meta.lastSyncAt ? new Date(meta.lastSyncAt).toLocaleString() : 'never'} · attributed by work period</>}
-        actions={<Button asChild variant="accent"><Link to="/import"><RefreshCw /> Import &amp; Sync</Link></Button>}
       />
 
       <ReconBanner />
@@ -148,7 +147,7 @@ export function Overview() {
 
       {s && (
         <div className="mt-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          <StatCard tone="support" label="Dashboard lifetime" value={formatCents(s.lifetimeCents)} sub={s.lifetimeCents !== null && s.lifetimeCents !== v.life.totalCents ? <>Tracked differs by {formatCents(v.life.totalCents - s.lifetimeCents)}</> : 'Matches your tracked total'} hint={`As shown on the dashboard at the last sync.${s.chartTotalCents != null ? ` The "Earnings over time" chart showed ${formatCents(s.chartTotalCents)} (it refreshes separately).` : ''}`} />
+          <StatCard tone="support" label="Dashboard lifetime" value={formatCents(s.lifetimeCents)} sub={s.lifetimeCents !== null && s.lifetimeCents !== v.life.totalCents ? `Tracked is ${formatCents(Math.abs(v.life.totalCents - s.lifetimeCents))} ${v.life.totalCents < s.lifetimeCents ? 'below' : 'above'} this` : 'Matches your tracked total'} hint={`As shown on the dashboard at the last sync.${s.chartTotalCents != null ? ` The "Earnings over time" chart showed ${formatCents(s.chartTotalCents)} (it refreshes separately).` : ''}`} />
           <StatCard tone="support" label="Current payout" value={formatCents(s.currentPayoutCents)} sub={s.payoutInTransit ?? s.stripeStatus ?? undefined} />
           <StatCard
             tone={s.nextPayoutDate && s.nextPayoutDate < today ? 'pending' : 'support'}
@@ -263,26 +262,40 @@ export function Overview() {
 }
 
 function ReconBanner() {
-  const { meta } = useData()
+  const { meta, imports } = useData()
   const r = useReconciliation()
   if (r.diff === null || r.diff === 0) return null
   const amt = formatCents(Math.abs(r.diff))
-  let why: string
-  if (r.summaryNewer) {
-    why = `The dashboard total was saved ${timeAgo(meta.lastSummaryAt ?? null)}, but your payments were last synced ${timeAgo(meta.lastSyncAt)}. The payment rows from that paste were not applied. Paste the full earnings page again to update them.`
+  const when = (ms: number) => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  // Most recent import event: an undo newer than any kept import explains the gap directly.
+  const lastKept = imports.find((i) => !i.undone)
+  const lastUndo = imports.filter((i) => i.undone && i.undoneAt).sort((a, b) => (b.undoneAt ?? 0) - (a.undoneAt ?? 0))[0]
+  const undoIsLatest = !!lastUndo && (!lastKept || (lastUndo.undoneAt ?? 0) > lastKept.createdAt)
+
+  let reason: string
+  let action: { to: string; label: string } = { to: '/import', label: 'Paste latest dashboard' }
+  if (r.diff > 0 && undoIsLatest) {
+    reason = `Your last import was undone on ${when(lastUndo.undoneAt!)}, so its changes were removed. Paste the dashboard again to re-apply them.`
+  } else if (r.diff > 0 && r.summaryNewer) {
+    reason = 'The latest paste updated the dashboard totals but not the payments. Paste the full page again.'
   } else if (r.diff > 0) {
-    why = 'The dashboard reports more than your saved payments. Usually this means older payments that are not on the dashboard\'s latest-10 list were never imported (add them in Payments), or the dashboard\'s sections refreshed at different times — paste the page again later.'
+    reason = 'Some payments are missing — usually older ones that are no longer on the dashboard. Add them in Payments, or paste again if the dashboard was still refreshing.'
+    action = { to: '/payments', label: 'Open Payments' }
   } else {
-    why = 'Your saved payments add up to more than The dashboard reports. Check for a duplicate or a manual entry in Payments, or a dashboard total that has not refreshed yet.'
+    reason = 'You may have a duplicate or a manual entry the dashboard does not have, or the dashboard has not refreshed yet.'
+    action = { to: '/payments', label: 'Open Payments' }
   }
+  void meta
   return (
-    <div className="mb-3 flex items-start gap-2 rounded-xl bg-pending/70 px-3 py-2.5 text-sm text-pending-ink" role="status">
+    <div className="mb-3 flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl bg-pending/70 px-3 py-2.5 text-sm text-pending-ink" role="status">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-      <div className="flex-1">
-        <b>{r.diff > 0 ? `${amt} reported by the dashboard is not in your tracked payments.` : `Tracked payments are ${amt} above the dashboard's total.`}</b>{' '}
-        Tracked {formatCents(r.tracked)} vs dashboard {formatCents(r.reported)}. {why}
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold">
+          Tracked total is {amt} {r.diff > 0 ? 'below' : 'above'} the dashboard ({formatCents(r.tracked)} vs {formatCents(r.reported)}).
+        </div>
+        <div>{reason}</div>
       </div>
-      <Link to="/import" className="shrink-0 font-medium underline">Import &amp; Sync</Link>
+      <Link to={action.to} className="shrink-0 rounded-lg bg-white/70 px-2.5 py-1 font-medium text-ink hover:bg-white">{action.label}</Link>
     </div>
   )
 }

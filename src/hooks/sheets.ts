@@ -21,7 +21,7 @@ export type SheetsState = { kind: 'idle' | 'syncing' | 'ok' | 'error'; message?:
 export function useSheetsSync() {
   const { uid, payments, meta, settings } = useData()
   const [state, setState] = useState<SheetsState>({ kind: 'idle' })
-  const configured = !!settings.sheetsSpreadsheetId
+  const configured = !!settings.sheetsSpreadsheetId && settings.sheetsFileAccess === true
   const auto = configured && settings.sheetsAutoSync !== false
 
   /** Call at the start of a click handler: opens Google's popup if access is needed. */

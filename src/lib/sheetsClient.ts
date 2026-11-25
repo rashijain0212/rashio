@@ -1,12 +1,16 @@
 // Browser client for the Google Sheets API using the signed-in user's own
 // Google OAuth token (no server, no stored secrets). The token is requested via
-// a Google popup with the spreadsheets scope and kept in memory only (~1 hour).
+// a Google popup and kept in memory only (~1 hour).
+//
+// Permission is "drive.file": Rashio can only open spreadsheets it created or
+// that the user picked with Google's file picker — not the rest of their Drive.
+// Google treats this as non-sensitive, so no "unverified app" warning appears.
 
 import { GoogleAuthProvider, reauthenticateWithPopup } from 'firebase/auth'
 import { auth } from './firebase'
 import type { Grid, SheetsApi, TabInfo } from './sheets'
 
-const SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
+const SCOPE = 'https://www.googleapis.com/auth/drive.file'
 let token: { value: string; expiresAt: number } | null = null
 
 export function hasSheetsToken(): boolean {
@@ -40,11 +44,18 @@ async function call<T>(url: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     const msg = body?.error?.message ?? res.statusText
-    if (res.status === 403) throw new Error(`Google Sheets refused access (${msg}). Make sure this Google account can edit the spreadsheet.`)
-    if (res.status === 404) throw new Error('Spreadsheet not found. Check the link in Settings.')
+    if (res.status === 403 || res.status === 404) throw new SheetsNoFileAccessError(msg)
     throw new Error(`Google Sheets error: ${msg}`)
   }
   return res.json() as Promise<T>
+}
+
+/** Rashio has not been given access to this spreadsheet (pick it once in Settings). */
+export class SheetsNoFileAccessError extends Error {
+  constructor(detail: string) {
+    super(`Rashio can't open this spreadsheet yet. In Settings, click "Choose spreadsheet" and select it once. (${detail})`)
+    this.name = 'SheetsNoFileAccessError'
+  }
 }
 
 export class SheetsAuthError extends Error {
@@ -86,4 +97,58 @@ export async function createSpreadsheet(title: string): Promise<string> {
     body: JSON.stringify({ properties: { title }, sheets: [{ properties: { title: 'Overview' } }] }),
   })
   return r.spreadsheetId
+}
+
+// ---------------------------------------------------------------- Google file picker
+
+declare global {
+  interface Window {
+    gapi?: { load: (lib: string, cb: () => void) => void }
+    google?: { picker: any } // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+}
+
+let pickerLoaded: Promise<void> | null = null
+function loadPicker(): Promise<void> {
+  pickerLoaded ??= new Promise<void>((resolve, reject) => {
+    const done = () => window.gapi!.load('picker', () => resolve())
+    if (window.gapi) return done()
+    const s = document.createElement('script')
+    s.src = 'https://apis.google.com/js/api.js'
+    s.async = true
+    s.onload = done
+    s.onerror = () => {
+      pickerLoaded = null
+      reject(new Error('Could not load the Google file picker. Check your connection and try again.'))
+    }
+    document.head.appendChild(s)
+  })
+  return pickerLoaded
+}
+
+/**
+ * Opens Google's file picker (inside the page) so the user can choose the
+ * spreadsheet Rashio may edit. Needs a token from connectGoogleSheets().
+ * Resolves with the spreadsheet id, or null if the user closed the picker.
+ */
+export async function pickSpreadsheet(): Promise<{ id: string; name: string } | null> {
+  if (!hasSheetsToken()) throw new SheetsAuthError()
+  await loadPicker()
+  const g = window.google!.picker
+  const env = import.meta.env
+  return new Promise((resolve) => {
+    const view = new g.DocsView(g.ViewId.SPREADSHEETS).setIncludeFolders(true).setSelectFolderEnabled(false).setMode(g.DocsViewMode.LIST)
+    const picker = new g.PickerBuilder()
+      .addView(view)
+      .setOAuthToken(token!.value)
+      .setDeveloperKey(env.VITE_FIREBASE_API_KEY)
+      .setAppId(env.VITE_FIREBASE_MESSAGING_SENDER_ID)
+      .setTitle('Choose the spreadsheet Rashio may update')
+      .setCallback((data: { action: string; docs?: { id: string; name: string }[] }) => {
+        if (data.action === g.Action.PICKED && data.docs?.[0]) resolve({ id: data.docs[0].id, name: data.docs[0].name })
+        else if (data.action === g.Action.CANCEL) resolve(null)
+      })
+      .build()
+    picker.setVisible(true)
+  })
 }

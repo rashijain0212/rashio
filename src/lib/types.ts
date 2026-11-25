@@ -115,6 +115,10 @@ export interface Settings {
   projectContracts?: Record<string, string[]>
   /** Google Sheets reporting copy */
   sheetsSpreadsheetId?: string | null
+  /** Display name of the chosen spreadsheet */
+  sheetsSpreadsheetName?: string | null
+  /** true once the spreadsheet was chosen in Google's picker (or created by Rashio) */
+  sheetsFileAccess?: boolean
   sheetsAutoSync?: boolean
   sheetsLastSyncAt?: number | null
   sheetsLastError?: string | null
