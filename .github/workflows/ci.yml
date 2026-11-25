@@ -1,0 +1,80 @@
+name: CI & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Firebase web config from repository variables
+        run: |
+          {
+            echo "VITE_FIREBASE_API_KEY=${{ vars.VITE_FIREBASE_API_KEY }}"
+            echo "VITE_FIREBASE_AUTH_DOMAIN=${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}"
+            echo "VITE_FIREBASE_PROJECT_ID=${{ vars.VITE_FIREBASE_PROJECT_ID }}"
+            echo "VITE_FIREBASE_STORAGE_BUCKET=${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}"
+            echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}"
+            echo "VITE_FIREBASE_APP_ID=${{ vars.VITE_FIREBASE_APP_ID }}"
+          } > .env.local
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Firestore security rules tests (emulator)
+        run: npx --yes firebase-tools@latest emulators:exec --only firestore --project demo-earnings "npx vitest run --config vitest.rules.config.ts"
+
+  deploy:
+    # Deploys only from main, and only if the service-account secret has been added.
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      HAS_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_SA == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_SA == 'true'
+        with:
+          node-version: 20
+          cache: npm
+      - name: Build with Firebase web config from repository variables
+        if: env.HAS_SA == 'true'
+        run: |
+          npm ci
+          {
+            echo "VITE_FIREBASE_API_KEY=${{ vars.VITE_FIREBASE_API_KEY }}"
+            echo "VITE_FIREBASE_AUTH_DOMAIN=${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}"
+            echo "VITE_FIREBASE_PROJECT_ID=${{ vars.VITE_FIREBASE_PROJECT_ID }}"
+            echo "VITE_FIREBASE_STORAGE_BUCKET=${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}"
+            echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}"
+            echo "VITE_FIREBASE_APP_ID=${{ vars.VITE_FIREBASE_APP_ID }}"
+          } > .env.local
+          npm run build
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        if: env.HAS_SA == 'true'
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          target: app
+          channelId: live
+      - name: Skip notice
+        if: env.HAS_SA != 'true'
+        run: echo "FIREBASE_SERVICE_ACCOUNT secret not set; skipping automatic deploy."
