@@ -300,6 +300,14 @@ export async function deletePayments(db: Db, uid: string, ids: string[]): Promis
   })
 }
 
+/** Accept (or with null, stop accepting) the current tracked-vs-dashboard difference. Payments are not changed. */
+export async function setReconciliationAccepted(db: Db, uid: string, value: { trackedCents: number; reportedCents: number } | null, now = Date.now()) {
+  await db.runTransaction(async (tx) => {
+    const meta = await readMeta(tx, uid)
+    tx.set(paths.sync(uid), clean({ ...meta, reconAccepted: value ? { ...value, at: now } : null }) as unknown as DocData)
+  })
+}
+
 export async function saveSettings(db: Db, uid: string, settings: Settings & { email?: string | null }): Promise<void> {
   await db.runTransaction(async (tx) => {
     const cur = (await tx.get(paths.user(uid))) ?? {}

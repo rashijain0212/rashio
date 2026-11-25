@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, RefreshCw } from 'lucide-react'
 import { useData } from '@/hooks/data'
@@ -11,6 +11,8 @@ import { StackedBars, TYPE_SERIES, activeSeries } from '@/components/Charts'
 import { cycleBucket, effectiveHourlyCents, groupBy, groupTotals, lifetimeTotals, monthBucket, rangeTotals, upcomingPayouts, emptyTotals, type Totals } from '@/lib/calc'
 import { projectRows } from '@/lib/projects'
 import { useReconciliation } from '@/components/CloudStatus'
+import { setReconciliationAccepted } from '@/lib/store'
+import { firestoreDb } from '@/lib/firebase'
 import { AlertTriangle } from 'lucide-react'
 import { formatCents } from '@/lib/money'
 import { cycleFor, cycleLabel, formatDate, monthLabel, todayISO, addDays, daysInclusive, monthBounds, ordinal } from '@/lib/dates'
@@ -62,7 +64,8 @@ function CompareTable({ rows, prevToDate, prevName }: { rows: { label: string; t
 }
 
 export function Overview() {
-  const { payments, meta, settings, loading, imports } = useData()
+  const { payments, meta, settings, loading, imports, uid } = useData()
+  const recon = useReconciliation()
   const lastImport = imports.find((r) => !r.undone)
   const lastDelta = lastImport && lastImport.totalAfterCents !== undefined && lastImport.totalBeforeCents !== undefined ? lastImport.totalAfterCents - lastImport.totalBeforeCents : null
   const today = todayISO()
@@ -147,7 +150,7 @@ export function Overview() {
 
       {s && (
         <div className="mt-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          <StatCard tone="support" label="Dashboard lifetime" value={formatCents(s.lifetimeCents)} sub={s.lifetimeCents !== null && s.lifetimeCents !== v.life.totalCents ? `Tracked is ${formatCents(Math.abs(v.life.totalCents - s.lifetimeCents))} ${v.life.totalCents < s.lifetimeCents ? 'below' : 'above'} this` : 'Matches your tracked total'} hint={`As shown on the dashboard at the last sync.${s.chartTotalCents != null ? ` The "Earnings over time" chart showed ${formatCents(s.chartTotalCents)} (it refreshes separately).` : ''}`} />
+          <StatCard tone="support" label="Dashboard lifetime" value={formatCents(s.lifetimeCents)} sub={s.lifetimeCents !== null && s.lifetimeCents !== v.life.totalCents ? (recon.accepted ? <>Difference of {formatCents(Math.abs(v.life.totalCents - s.lifetimeCents))} accepted · <button className="underline" onClick={() => setReconciliationAccepted(firestoreDb, uid, null)}>show warning again</button></> : `Tracked is ${formatCents(Math.abs(v.life.totalCents - s.lifetimeCents))} ${v.life.totalCents < s.lifetimeCents ? 'below' : 'above'} this`) : 'Matches your tracked total'} hint={`As shown on the dashboard at the last sync.${s.chartTotalCents != null ? ` The "Earnings over time" chart showed ${formatCents(s.chartTotalCents)} (it refreshes separately).` : ''}`} />
           <StatCard tone="support" label="Current payout" value={formatCents(s.currentPayoutCents)} sub={s.payoutInTransit ?? s.stripeStatus ?? undefined} />
           <StatCard
             tone={s.nextPayoutDate && s.nextPayoutDate < today ? 'pending' : 'support'}
@@ -264,8 +267,22 @@ export function Overview() {
 function ReconBanner() {
   const { meta, imports } = useData()
   const r = useReconciliation()
-  if (r.diff === null || r.diff === 0) return null
+  const { uid } = useData()
+  const [busy, setBusy] = useState(false)
+  if (r.diff === null || r.diff === 0 || r.accepted) return null
   const amt = formatCents(Math.abs(r.diff))
+  const keep = async () => {
+    const ok = window.confirm(
+      `Keep your payments as they are?\n\n• Your saved payments stay exactly as they are (${formatCents(r.tracked)}).\n• The dashboard total (${formatCents(r.reported)}) stays recorded for reference.\n• Rashio stops warning about this ${amt} difference.\n\nIf either total changes later (for example after a new paste), the warning comes back. You can also turn it back on from the Dashboard lifetime card.`,
+    )
+    if (!ok) return
+    setBusy(true)
+    try {
+      await setReconciliationAccepted(firestoreDb, uid, { trackedCents: r.tracked, reportedCents: r.reported! })
+    } finally {
+      setBusy(false)
+    }
+  }
   const when = (ms: number) => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   // Most recent import event: an undo newer than any kept import explains the gap directly.
   const lastKept = imports.find((i) => !i.undone)
@@ -295,7 +312,12 @@ function ReconBanner() {
         </div>
         <div>{reason}</div>
       </div>
-      <Link to={action.to} className="shrink-0 rounded-lg bg-white/70 px-2.5 py-1 font-medium text-ink hover:bg-white">{action.label}</Link>
+      <div className="flex w-full flex-wrap gap-2 pl-6">
+        <Link to={action.to} className="rounded-lg bg-white/80 px-2.5 py-1 font-medium text-ink hover:bg-white">{action.label}</Link>
+        <button onClick={keep} disabled={busy} className="rounded-lg px-2.5 py-1 font-medium text-pending-ink underline-offset-2 hover:underline disabled:opacity-60">
+          Keep my payments as they are
+        </button>
+      </div>
     </div>
   )
 }

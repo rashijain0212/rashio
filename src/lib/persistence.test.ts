@@ -91,3 +91,18 @@ describe('sync on top of migrated history', () => {
     expect(db.list(`users/${UID}/imports/`)).toHaveLength(1)
   })
 })
+
+describe('accepting a tracked-vs-dashboard difference', () => {
+  it('stores the accepted totals without touching payments, and can be cleared', async () => {
+    const { setReconciliationAccepted } = await import('./store')
+    const db = new MemoryDb()
+    await restoreBackup(db, UID, backup)
+    const before = JSON.stringify(stored(db))
+    await setReconciliationAccepted(db, UID, { trackedCents: 1349664, reportedCents: 1376040 }, 42)
+    const meta = db.docs.get(`users/${UID}/meta/sync`)!.data as { reconAccepted: unknown }
+    expect(meta.reconAccepted).toEqual({ trackedCents: 1349664, reportedCents: 1376040, at: 42 })
+    expect(JSON.stringify(stored(db))).toBe(before)
+    await setReconciliationAccepted(db, UID, null)
+    expect((db.docs.get(`users/${UID}/meta/sync`)!.data as { reconAccepted: unknown }).reconAccepted).toBeNull()
+  })
+})

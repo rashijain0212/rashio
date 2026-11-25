@@ -38,7 +38,10 @@ export function useReconciliation() {
   const reported = meta.summary?.lifetimeCents ?? null
   const diff = reported === null ? null : reported - tracked
   const summaryNewer = !!meta.lastSummaryAt && (!meta.lastSyncAt || meta.lastSummaryAt > meta.lastSyncAt)
-  return { tracked, reported, diff, summaryNewer }
+  const a = meta.reconAccepted
+  // Accepted only while BOTH totals are exactly what the user accepted.
+  const accepted = !!a && diff !== null && diff !== 0 && a.trackedCents === tracked && a.reportedCents === reported
+  return { tracked, reported, diff, summaryNewer, accepted }
 }
 
 export function SyncSummary() {
@@ -53,6 +56,8 @@ export function SyncSummary() {
       {r.diff !== null && (
         r.diff === 0
           ? <div className="text-paid-ink">✓ Matches dashboard total</div>
+          : r.accepted
+          ? <div>Difference of {formatCents(Math.abs(r.diff))} accepted</div>
           : <Link to="/" className="block text-pending-ink underline">⚠ {formatCents(Math.abs(r.diff))} {r.diff > 0 ? 'not yet tracked' : 'more than the dashboard'}</Link>
       )}
     </div>

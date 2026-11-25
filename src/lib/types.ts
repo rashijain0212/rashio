@@ -138,6 +138,8 @@ export interface SyncMeta {
   lastSummaryAt?: number | null
   /** Project → contracts mapping learned automatically from exact totals */
   projectMap?: Record<string, string[]>
+  /** The user accepted this exact tracked-vs-dashboard difference (warning hidden while both totals stay the same) */
+  reconAccepted?: { trackedCents: number; reportedCents: number; at: number } | null
   lastImportId: string | null
   summary: ParsedSummary | null
   projects: ParsedProject[]
