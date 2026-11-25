@@ -61,6 +61,17 @@
           "type": 301
         }
       ]
+    },
+    {
+      "target": "legacy2",
+      "public": "legacy-redirect",
+      "redirects": [
+        {
+          "source": "/:path*",
+          "destination": "https://rashio.web.app/:path*",
+          "type": 301
+        }
+      ]
     }
   ],
   "emulators": {
