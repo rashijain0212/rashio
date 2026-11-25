@@ -39,7 +39,7 @@ export function AutoSheetSync() {
 
   if (!needsConnect) return null
   return (
-    <Link to="/settings" className="block rounded-lg bg-pending/70 px-2.5 py-1.5 text-[11px] text-pending-ink underline">
+    <Link to="/spreadsheets" className="block rounded-lg bg-pending/70 px-2.5 py-1.5 text-[11px] text-pending-ink underline">
       Spreadsheet not updated — reconnect Google Sheets
     </Link>
   )

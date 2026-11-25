@@ -26,7 +26,7 @@ export function toCsv(payments: Payment[]): string {
 }
 
 export function toBackup(payments: Payment[], extra: Partial<Backup> = {}): Backup {
-  return { app: 'rashio', version: 1, exportedAt: new Date().toISOString(), payments, ...extra }
+  return { app: 'chaching', version: 1, exportedAt: new Date().toISOString(), payments, ...extra }
 }
 
 export function downloadFile(name: string, content: string, type: string) {

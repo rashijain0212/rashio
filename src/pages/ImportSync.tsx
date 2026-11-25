@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, ArrowRight, CheckCircle2, ClipboardPaste, History, Info, RotateCcw, Upload } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CheckCircle2, ClipboardPaste, Info, ShieldCheck, Upload } from 'lucide-react'
 import { friendlyError, useData } from '@/hooks/data'
 import { PageHeader } from '@/components/PageHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/StatCard'
 import { parseDashboardText } from '@/lib/parser'
 import { applyPlan, finalState, metaChanges, planImport, reconcile, validateResolutions, type PlanItem } from '@/lib/sync'
-import { commitImportEx, ConflictError, EditedSinceImportError, undoImport } from '@/lib/store'
+import { commitImportEx, ConflictError } from '@/lib/store'
 import { lifetimeTotals } from '@/lib/calc'
 import { inferProjectMap } from '@/lib/projects'
 import { markSheetSynced, useSheetsSync } from '@/hooks/sheets'
@@ -104,14 +104,22 @@ function Reconciliation({ lines }: { lines: ReconciliationLine[] }) {
 }
 
 export default function ImportSync() {
-  const { uid, payments, meta, settings, imports } = useData()
+  const { uid, payments, meta, settings } = useData()
   const sheets = useSheetsSync()
   const [text, setText] = useState('')
   const [parsed, setParsed] = useState<{ text: string; result: ParseResult } | null>(null)
   const [res, setRes] = useState<{ key: string; map: Record<number, string> }>({ key: '', map: {} })
   const [busy, setBusy] = useState(false)
+  const pasteRef = useRef<HTMLTextAreaElement>(null)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [showAll, setShowAll] = useState(false)
+  const [done, setDone] = useState<null | {
+    title: string
+    lines: string[]
+    before: number
+    after: number
+    sheet: { ok: boolean; text: string } | null
+  }>(null)
 
   // Parse automatically (debounced). Saving is disabled until the parse matches the current text.
   useEffect(() => {
@@ -155,9 +163,9 @@ export default function ImportSync() {
   const blocker = !result
     ? null
     : result.unparsedLines.length > 0
-      ? `${result.unparsedLines.length} payment row(s) could not be read, so nothing will be saved (a partial sync could leave your totals wrong). Please copy the whole Earnings page again; if it keeps happening, send the unreadable lines shown above.`
+      ? `${result.unparsedLines.length === 1 ? 'One payment needs' : `${result.unparsedLines.length} payments need`} attention. Review the highlighted ${result.unparsedLines.length === 1 ? 'row' : 'rows'} above before saving. No payments have been changed.`
       : result.payments.length === 0
-        ? 'No payment rows were recognised in this paste, so nothing will be saved. Copy the entire earnings page (⌘/Ctrl+A) including the payments table.'
+        ? "We couldn't find any earnings records. Copy the complete earnings page and try again. Your saved records are unchanged."
         : null
 
   const nothingToDo = !!view && !view.paymentChanges && !view.mc.summaryChanged && view.mc.projectChanges.length === 0 && JSON.stringify(view.projectMap) === JSON.stringify(meta.projectMap ?? {})
@@ -176,96 +184,139 @@ export default function ImportSync() {
         projectMap: view.projectMap,
       })
       // Firestore is saved; now refresh the Google Sheet reporting copy (never blocks the save).
-      let sheetNote = ''
+      let sheet: { ok: boolean; text: string } | null = null
       if (sheets.auto && !r.noop) {
-        if (!sheetsReady) sheetNote = ' Google Sheet not updated (not connected) — use Settings → Sync now.'
+        if (!sheetsReady) sheet = { ok: false, text: 'Earnings saved. Spreadsheet not updated — reconnect Google Sheets to update your report.' }
         else {
           const ids = r.record?.createdIds ?? []
           const final = finalState(payments, plan, resolutions).map((p) => (p.id.startsWith('new-') ? { ...p, id: ids[Number(p.id.slice(4))] ?? p.id } : p))
           const projects = result.projects.length && !isStaleProjects(meta.projects, result.projects) ? result.projects : meta.projects
           try {
             markSheetSynced(meta.revision + 1)
-            sheetNote = ` ${await sheets.sync({ payments: final, projects })}`
+            await sheets.sync({ payments: final, projects })
+            sheet = { ok: true, text: 'Spreadsheet updated' }
           } catch (e) {
-            sheetNote = ` ${(e as Error).message}`
+            sheet = { ok: false, text: `Earnings saved. Spreadsheet not updated. ${(e as Error).message}` }
           }
         }
       }
-      if (r.noop) setMsg({ kind: 'info', text: 'Already up to date — nothing needed saving.' })
-      else if (r.metaOnly) setMsg({ kind: 'ok', text: `Saved to the cloud: dashboard summary and project totals updated (no payment changes).${sheetNote}` })
-      else {
-        const c = r.record!.counts
-        const delta = view.after.totalCents - view.before.totalCents
-        setMsg({
-          kind: 'ok',
-          text: `Saved to the cloud: ${c.created} new, ${c.updated} updated, ${c.unchanged} unchanged, ${plan.preserved} older payments retained${c.skipped ? `, ${c.skipped} kept as saved` : ''} — ${view.finalCount} payments in total. Tracked earnings ${formatCents(view.before.totalCents)} → ${formatCents(view.after.totalCents)} (${signed(delta)}).${sheetNote}`,
-        })
+      const lines: string[] = []
+      if (r.metaOnly) lines.push('Dashboard totals and project earnings refreshed (no payment changes)')
+      else if (r.record) {
+        const c = r.record.counts
+        if (c.created) lines.push(`${c.created} new payment${c.created === 1 ? '' : 's'} added`)
+        if (c.updated) lines.push(`${c.updated} payment${c.updated === 1 ? '' : 's'} updated`)
+        if (c.unchanged) lines.push(`${c.unchanged} unchanged`)
+        if (plan.preserved) lines.push(`${plan.preserved} older payment${plan.preserved === 1 ? '' : 's'} kept`)
+        if (c.skipped) lines.push(`${c.skipped} kept as you saved ${c.skipped === 1 ? 'it' : 'them'}`)
       }
+      setDone({
+        title: r.noop ? "You're already up to date" : 'Earnings saved',
+        lines,
+        before: view.before.totalCents,
+        after: view.after.totalCents,
+        sheet,
+      })
       setText('')
       setParsed(null)
       setShowAll(false)
     } catch (e) {
-      setMsg({ kind: 'err', text: e instanceof ConflictError ? e.message : `Nothing was saved. ${friendlyError(e)}` })
+      setMsg({
+        kind: 'err',
+        text: e instanceof ConflictError
+          ? 'Your records changed since this preview was created, so nothing was saved. The preview has been refreshed — review it and save again.'
+          : `We couldn't confirm your changes were saved. Your pasted text is still here. The review below now reflects your latest saved records — if it says you're already up to date, the save went through; otherwise save again (it never creates duplicates). (${friendlyError(e)})`,
+      })
     } finally {
       setBusy(false)
     }
   }
 
-  const undo = async (id: string) => {
-    const rec = imports.find((i) => i.id === id)
-    if (!rec) return
-    const parts: string[] = []
-    if (rec.counts.created) parts.push(`${rec.counts.created} payment${rec.counts.created === 1 ? '' : 's'} it added will be deleted`)
-    if (rec.counts.updated) parts.push(`${rec.counts.updated} payment${rec.counts.updated === 1 ? '' : 's'} it updated will go back to their earlier values`)
-    const delta = rec.totalAfterCents !== undefined && rec.totalBeforeCents !== undefined ? rec.totalBeforeCents - rec.totalAfterCents : null
-    const msg = [
-      `Undo the import from ${new Date(rec.createdAt).toLocaleString()}?`,
-      '',
-      ...parts.map((p) => `• ${p}`),
-      delta !== null ? `• Your tracked total changes by ${signed(delta)}` : '',
-      '',
-      'Only do this if that import was wrong. To bring payments up to date, just paste the dashboard again — no undo needed.',
-    ].filter((l, i, a) => l !== '' || (a[i - 1] ?? '') !== '').join('\n')
-    if (!window.confirm(msg)) return
-    try {
-      const r = await undoImport(firestoreDb, uid, id)
-      setMsg({ kind: 'ok', text: `Undone: ${r.deleted} removed, ${r.restored} restored.` })
-    } catch (e) {
-      if (e instanceof EditedSinceImportError && window.confirm(e.message)) {
-        const r = await undoImport(firestoreDb, uid, id, true)
-        setMsg({ kind: 'ok', text: `Undone: ${r.deleted} removed, ${r.restored} restored.` })
-      } else if (!(e instanceof EditedSinceImportError)) setMsg({ kind: 'err', text: `Undo failed — nothing was changed. ${friendlyError(e)}` })
-    }
-  }
-
   const pasteFromClipboard = async () => {
-    try { setText(await navigator.clipboard.readText()); setMsg(null) } catch { setMsg({ kind: 'err', text: 'Clipboard access was blocked — paste with ⌘/Ctrl+V instead.' }) }
+    try { setText(await navigator.clipboard.readText()); setMsg(null); setDone(null) } catch {
+      setMsg({ kind: 'info', text: "We couldn't access your clipboard. Paste the earnings page directly into the box instead (⌘/Ctrl+V)." })
+      pasteRef.current?.focus()
+    }
   }
 
   const changed = [...by('new'), ...by('update')]
   const reconWarn = view?.recon.filter((l) => l.diffCents !== 0) ?? []
 
+  const step = done ? 3 : ready && plan ? 2 : 1
+
+  if (done) {
+    const delta = done.after - done.before
+    return (
+      <>
+        <PageHeader title="Import earnings" subtitle="Paste once — ChaChing finds what changed." />
+        <Stepper step={3} />
+        <Card className="p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-paid"><CheckCircle2 className="size-5 text-paid-ink" /></span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-semibold text-ink">{done.title}</h2>
+              {done.title.startsWith("You're") ? (
+                <p className="text-sm text-ink-soft">No changes were needed.</p>
+              ) : (
+                <p className="num text-sm text-ink-soft">
+                  Earnings {formatCents(done.before)} → <b className="text-ink">{formatCents(done.after)}</b>
+                  {delta !== 0 && <span className={delta > 0 ? 'text-paid-ink' : 'text-danger'}> ({signed(delta)})</span>}
+                </p>
+              )}
+            </div>
+          </div>
+          {done.lines.length > 0 && (
+            <ul className="mt-4 grid gap-1.5 text-sm sm:grid-cols-2">
+              {done.lines.map((l) => <li key={l} className="flex items-center gap-2"><span aria-hidden className="size-1.5 rounded-full bg-ink-faint" />{l}</li>)}
+            </ul>
+          )}
+          <div className="mt-4 space-y-1.5 border-t border-line pt-3 text-sm">
+            {!done.title.startsWith("You're") && <div className="flex items-center gap-2 text-paid-ink"><CheckCircle2 className="size-4" /> Saved to your cloud</div>}
+            {done.sheet && (
+              <div className={cn('flex items-start gap-2', done.sheet.ok ? 'text-paid-ink' : 'text-pending-ink')}>
+                {done.sheet.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}
+                <span>{done.sheet.text}{!done.sheet.ok && <> · <Link to="/spreadsheets" className="underline">Open Spreadsheets</Link></>}</span>
+              </div>
+            )}
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button asChild variant="accent"><Link to="/">Back to Overview</Link></Button>
+            <Link to="/activity" className="self-center px-2 text-sm text-ink-soft underline-offset-2 hover:text-ink hover:underline">View activity</Link>
+          </div>
+        </Card>
+      </>
+    )
+  }
+
   return (
     <>
-      <PageHeader title="Import & Sync" subtitle="On your earnings dashboard press ⌘/Ctrl+A, then ⌘/Ctrl+C, and paste here. Paste as often as you like — only real changes are saved." />
+      <PageHeader title="Import earnings" subtitle="Copy your complete earnings dashboard (⌘/Ctrl+A, ⌘/Ctrl+C) and paste it below. ChaChing finds what changed — paste as often as you like." />
+      <Stepper step={step} />
       {msg && (
-        <div className={cn('mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm', msg.kind === 'ok' ? 'bg-paid text-paid-ink' : msg.kind === 'info' ? 'bg-support text-ink' : 'bg-danger/10 text-danger')} role="status">
-          {msg.kind === 'err' ? <AlertTriangle className="size-4 shrink-0" /> : <CheckCircle2 className="size-4 shrink-0" />}
+        <div className={cn('mb-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm', msg.kind === 'ok' ? 'bg-paid text-paid-ink' : msg.kind === 'info' ? 'bg-support text-ink' : 'bg-danger/10 text-danger')} role="alert">
+          {msg.kind === 'err' ? <AlertTriangle className="mt-0.5 size-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 size-4 shrink-0" />}
           <span className="flex-1">{msg.text}</span>
-          {msg.kind === 'ok' && <Link to="/" className="font-medium underline">View dashboard</Link>}
         </div>
       )}
       <Card>
         <CardContent className="pt-4">
-          <Textarea aria-label="Earnings page text" rows={8} value={text} onChange={(e) => { setText(e.target.value); if (msg?.kind !== 'err') setMsg(null) }} placeholder="Paste the full earnings page here…" className="font-mono text-xs" />
+          <Textarea ref={pasteRef} aria-label="Earnings page text" rows={step === 1 ? 9 : 4} value={text} onChange={(e) => { setText(e.target.value); if (msg?.kind !== 'err') setMsg(null) }} placeholder="Paste your earnings dashboard here…" className="font-mono text-xs" />
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={pasteFromClipboard}><ClipboardPaste /> Paste from clipboard</Button>
             {text && <Button variant="ghost" size="sm" onClick={() => setText('')}>Clear</Button>}
             {text && !ready && <span className="text-xs text-ink-soft">Analyzing…</span>}
-            {ready && result && <span className="text-xs text-ink-soft">{result.payments.length} payment rows · {result.projects.length} projects recognised</span>}
+            {ready && result && result.payments.length > 0 && <span className="text-xs text-ink-soft">Found {result.payments.length} payments{result.projects.length ? ` and ${result.projects.length} projects` : ''}</span>}
+            <span className="ml-auto flex items-center gap-1 text-[11px] text-ink-faint"><ShieldCheck className="size-3.5" /> Your financial data stays private</span>
           </div>
         </CardContent>
       </Card>
+
+      {ready && result && !plan && (
+        <div className="mt-4 rounded-xl bg-pending/70 px-4 py-3 text-sm text-pending-ink" role="alert">
+          <div className="font-semibold">We couldn't find any earnings records.</div>
+          Copy the complete earnings page and try again. Your saved records are unchanged.
+        </div>
+      )}
 
       {ready && result && (
         <div className="mt-4 space-y-4">
@@ -281,7 +332,7 @@ export default function ImportSync() {
           {plan && view && (
             <Card>
               <CardHeader>
-                <CardTitle>Sync preview</CardTitle>
+                <CardTitle>Review changes</CardTitle>
                 <div className="flex flex-wrap gap-1.5 text-xs">
                   <Badge tone="paid">{by('new').length} new</Badge>
                   <Badge tone="hourly">{by('update').length} updated</Badge>
@@ -308,6 +359,8 @@ export default function ImportSync() {
                         key={it.idx}
                         it={it}
                         choice={
+                          <>
+                          <div className="mb-1 text-xs text-pending-ink">{it.kind === 'conflict' ? 'This snapshot may be older than your saved records. Keep your saved values or confirm the correction.' : 'More than one saved payment could match this entry. Choose the correct payment.'}</div>
                           <Select aria-label="Decision" className="h-8 max-w-xl text-xs" value={resolutions[it.idx] ?? ''} onChange={(e) => setResolution(it.idx, e.target.value)}>
                             <option value="">Choose…</option>
                             {it.kind === 'conflict' ? (
@@ -325,6 +378,7 @@ export default function ImportSync() {
                               </>
                             )}
                           </Select>
+                          </>
                         }
                       />
                     ))}
@@ -353,7 +407,7 @@ export default function ImportSync() {
 
                 {(view.mc.staleSummary || view.mc.staleProjects) && (
                   <div className="mt-3 rounded-lg bg-pending/50 px-3 py-2 text-xs text-pending-ink">
-                    <div className="flex items-center gap-1.5 font-semibold"><Info className="size-3.5" /> This page looks older than your saved data</div>
+                    <div className="flex items-center gap-1.5 font-semibold"><Info className="size-3.5" /> This snapshot may be older than your saved records</div>
                     {view.mc.staleSummary && <div>• Its dashboard total ({formatCents(result.summary.lifetimeCents)}) is lower than the saved one ({formatCents(meta.summary?.lifetimeCents ?? null)}), so your saved dashboard totals are kept.</div>}
                     {view.mc.staleProjects && <div>• Some project totals are lower than the saved ones, so the saved project totals are kept.</div>}
                   </div>
@@ -368,10 +422,19 @@ export default function ImportSync() {
 
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   {blocker && <div className="w-full rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger" role="alert"><AlertTriangle className="mr-1 inline size-4" />{blocker}</div>}
-                  <Button variant="accent" size="lg" onClick={commit} disabled={busy || !ready || !!validation || nothingToDo || !!blocker}>
-                    <Upload /> {busy ? 'Saving to cloud…' : nothingToDo ? 'Already up to date' : metaOnly ? 'Save dashboard update' : 'Sync to cloud'}
-                  </Button>
+                  {nothingToDo && !blocker ? (
+                    <div className="flex w-full flex-wrap items-center gap-3 rounded-xl bg-paid/70 px-4 py-3 text-sm text-paid-ink" role="status">
+                      <CheckCircle2 className="size-5" />
+                      <span className="flex-1"><b>You're already up to date.</b> No changes were needed.</span>
+                      <Link to="/" className="font-medium underline">Back to Overview</Link>
+                    </div>
+                  ) : (
+                    <Button variant="accent" size="lg" onClick={commit} disabled={busy || !ready || !!validation || !!blocker}>
+                      <Upload /> {busy ? 'Saving…' : metaOnly ? 'Save dashboard totals' : 'Save changes'}
+                    </Button>
+                  )}
                   {validation && <span className="text-sm text-pending-ink">{validation}</span>}
+                  {busy && <span className="text-sm text-ink-soft" role="status">Saving your changes…</span>}
                   <button className="text-xs text-ink-soft underline" onClick={() => setShowAll((v) => !v)}>{showAll ? 'Hide' : 'Show'} all rows & checks</button>
                 </div>
 
@@ -404,37 +467,27 @@ export default function ImportSync() {
         </div>
       )}
 
-      <Card className="mt-4">
-        <CardHeader><CardTitle className="flex items-center gap-1.5"><History className="size-4" />Import history</CardTitle><span className="text-xs text-ink-soft">Last sync {meta.lastSyncAt ? new Date(meta.lastSyncAt).toLocaleString() : 'never'}</span></CardHeader>
-        <CardContent>
-          {imports.length ? (
-            <Table>
-              <thead><tr><Th>When</Th><Th className="hidden sm:table-cell">New</Th><Th className="hidden sm:table-cell">Updated</Th><Th>Change</Th><Th className="hidden sm:table-cell">dashboard total</Th><Th /></tr></thead>
-              <tbody>
-                {imports.map((r) => (
-                  <tr key={r.id} className={r.undone ? 'text-ink-faint line-through' : ''}>
-                    <Td className="whitespace-nowrap">
-                      {new Date(r.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                      <div className="text-[11px] text-ink-soft sm:hidden">{r.counts.created} new · {r.counts.updated} updated</div>
-                    </Td>
-                    <Td className="num hidden sm:table-cell">{r.counts.created}</Td>
-                    <Td className="num hidden sm:table-cell">{r.counts.updated}</Td>
-                    <Td className="num whitespace-nowrap">{r.totalAfterCents !== undefined && r.totalBeforeCents !== undefined ? signed(r.totalAfterCents - r.totalBeforeCents) : '—'}</Td>
-                    <Td className="num hidden sm:table-cell">{formatCents(r.summary?.lifetimeCents ?? null)}</Td>
-                    <Td className="py-0.5 text-right">
-                      {r.undone ? (
-                        <span className="text-xs no-underline">undone</span>
-                      ) : r.id === imports.find((i) => !i.undone)?.id && (r.counts.created || r.counts.updated) ? (
-                        <Button variant="ghost" size="sm" onClick={() => undo(r.id)} title="Undo this import"><RotateCcw /> Undo</Button>
-                      ) : null}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          ) : <Empty>No imports yet.</Empty>}
-        </CardContent>
-      </Card>
     </>
+  )
+}
+
+function Stepper({ step }: { step: 1 | 2 | 3 | number }) {
+  const steps = ['Paste', 'Review', 'Done']
+  return (
+    <ol className="mb-3 flex items-center gap-2 text-xs" aria-label="Import progress">
+      {steps.map((label, i) => {
+        const n = i + 1
+        const state = n < step ? 'done' : n === step ? 'current' : 'todo'
+        return (
+          <li key={label} className="flex items-center gap-2" aria-current={state === 'current' ? 'step' : undefined}>
+            <span className={cn('flex size-6 items-center justify-center rounded-full text-[11px] font-semibold', state === 'done' ? 'bg-paid text-paid-ink' : state === 'current' ? 'bg-accent text-white' : 'bg-support text-ink-soft')}>
+              {state === 'done' ? '✓' : n}
+            </span>
+            <span className={cn(state === 'current' ? 'font-semibold text-ink' : 'text-ink-soft')}>{label}</span>
+            {n < steps.length && <span aria-hidden className="h-px w-6 bg-line sm:w-10" />}
+          </li>
+        )
+      })}
+    </ol>
   )
 }

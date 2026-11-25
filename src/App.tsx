@@ -12,6 +12,8 @@ const Payments = lazyPage(() => import('@/pages/Payments'))
 const ImportSync = lazyPage(() => import('@/pages/ImportSync'))
 const Analytics = lazyPage(() => import('@/pages/Analytics'))
 const SettingsPage = lazyPage(() => import('@/pages/Settings'))
+const Spreadsheets = lazyPage(() => import('@/pages/Spreadsheets'))
+const Activity = lazyPage(() => import('@/pages/Activity'))
 
 function Spinner() {
   return (
@@ -35,6 +37,8 @@ function AppRoutes() {
             <Route path="import" element={<ImportSync />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="settings" element={<SettingsPage />} />
+        <Route path="spreadsheets" element={<Spreadsheets />} />
+        <Route path="activity" element={<Activity />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
       </Routes>
@@ -49,11 +53,11 @@ function StorageStuck() {
       <div className="max-w-sm rounded-2xl border border-line bg-white p-5 text-sm shadow-sm">
         <h1 className="mb-1 text-base font-semibold">Still loading…</h1>
         <p className="mb-3 text-ink-soft">
-          Your browser's local storage is not responding. This can happen right after clearing site data, or when another Rashio tab is open.
+          Your browser's local storage is not responding. This can happen right after clearing site data, or when another ChaChing tab is open.
           Your data is safe in the cloud.
         </p>
         <ol className="mb-4 list-decimal space-y-1 pl-5 text-ink-soft">
-          <li>Close other Rashio tabs and reload this page, or</li>
+          <li>Close other ChaChing tabs and reload this page, or</li>
           <li>continue without local storage (you will sign in again; nothing is lost).</li>
         </ol>
         <div className="flex flex-wrap gap-2">

@@ -53,8 +53,8 @@ export default function Payments() {
         subtitle={`${payments.length} records · click a status to change it`}
         actions={
           <>
-            <Button variant="outline" size="sm" onClick={() => downloadFile('earnings-payments.csv', toCsv(rows), 'text/csv')}><Download /> CSV</Button>
-            <Button size="sm" onClick={() => setAdding(true)}><Plus /> Add payment</Button>
+            <Button variant="outline" size="sm" onClick={() => downloadFile('chaching-payments.csv', toCsv(rows), 'text/csv')}><Download /> Export CSV</Button>
+            <Button size="sm" variant="accent" onClick={() => setAdding(true)}><Plus /> Add payment</Button>
           </>
         }
       />

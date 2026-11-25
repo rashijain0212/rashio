@@ -44,12 +44,15 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
     const update = isChunkError(this.state.error)
     return (
       <div className="mx-auto mt-10 max-w-md rounded-xl border border-line bg-white p-5 text-sm shadow-sm" role="alert">
-        <h2 className="mb-1 text-base font-semibold">{update ? 'A new version is available' : 'Something went wrong on this page'}</h2>
+        <h2 className="mb-1 text-base font-semibold">{update ? 'A new version of ChaChing is available' : "This page couldn't load"}</h2>
         <p className="mb-3 text-ink-soft">
-          {update ? 'Rashio was updated while this tab was open. Reload to continue.' : 'Your data is safe in the cloud. Reload the page to continue.'}
+          {update ? 'Reload to get the latest version. Your saved earnings are not affected.' : 'Your saved earnings are safe in the cloud. Try again, or open another page from the menu.'}
         </p>
-        {!update && <pre className="mb-3 max-h-24 overflow-auto rounded bg-support p-2 text-[11px]">{this.state.error.message}</pre>}
-        <button className="rounded-lg bg-ink px-3 py-2 font-medium text-white" onClick={() => window.location.reload()}>Reload</button>
+        {!update && <details className="mb-3 text-[11px] text-ink-soft"><summary className="cursor-pointer">Details</summary><pre className="mt-1 max-h-24 overflow-auto rounded bg-support p-2">{this.state.error.message}</pre></details>}
+        <div className="flex gap-2">
+          {!update && <button className="rounded-lg bg-accent px-3 py-2 font-medium text-white" onClick={() => this.setState({ error: null })}>Try again</button>}
+          <button className={update ? 'rounded-lg bg-accent px-3 py-2 font-medium text-white' : 'rounded-lg border border-line px-3 py-2 font-medium'} onClick={() => window.location.reload()}>Reload</button>
+        </div>
       </div>
     )
   }

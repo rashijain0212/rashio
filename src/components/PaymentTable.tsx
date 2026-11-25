@@ -5,7 +5,7 @@ import { formatCents } from '@/lib/money'
 import { formatDate, formatRange } from '@/lib/dates'
 import { StatusBadge, TypeBadge, STATUS_LABEL } from './labels'
 import { Table, Td, Th, Empty } from './Table'
-import { Button } from './ui/button'
+import { ActionsMenu } from './ui/menu'
 import { lifetimeTotals, workInterval } from '@/lib/calc'
 import { cn } from '@/lib/utils'
 
@@ -51,7 +51,7 @@ export function PaymentTable({
   estimatedIds?: Set<string>
 }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: defaultSort, dir: -1 })
-  if (!payments.length) return <Empty>No payments match.</Empty>
+  if (!payments.length) return <Empty>No payments match these filters.</Empty>
   const rows = sortPayments(payments, sort.key, sort.dir)
   const t = lifetimeTotals(payments)
 
@@ -163,8 +163,13 @@ export function PaymentTable({
             )}
             {(onEdit || onDelete) && (
               <Td className="whitespace-nowrap py-0.5 text-right">
-                {onEdit && <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => onEdit(p)}><Pencil /></Button>}
-                {onDelete && <Button variant="danger-ghost" size="icon" aria-label="Delete" onClick={() => onDelete(p)}><Trash2 /></Button>}
+                <ActionsMenu
+                  label={`Actions for ${p.contract}`}
+                  items={[
+                    ...(onEdit ? [{ label: 'View and edit', onSelect: () => onEdit(p), icon: <Pencil className="size-4" /> }] : []),
+                    ...(onDelete ? [{ label: 'Delete payment', onSelect: () => onDelete(p), danger: true, icon: <Trash2 className="size-4" /> }] : []),
+                  ]}
+                />
               </Td>
             )}
           </tr>

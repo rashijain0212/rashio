@@ -328,9 +328,9 @@ export interface Backup {
 
 export function validateBackup(data: unknown): Backup {
   const b = data as Backup
-  // "rashio"; files from earlier versions used the previous "<name>-track" id.
-  if (!b || typeof b !== 'object' || typeof b.app !== 'string' || !(b.app === 'rashio' || b.app === 'my-earnings' || /^[a-z]+-track$/.test(b.app)) || b.version !== 1 || !Array.isArray(b.payments)) {
-    throw new Error('Not a Rashio backup file (expected version 1 with a payments list).')
+  // New backups say "chaching"; older files said "rashio", "my-earnings" or "<name>-track" and still restore.
+  if (!b || typeof b !== 'object' || typeof b.app !== 'string' || !(b.app === 'chaching' || b.app === 'rashio' || b.app === 'my-earnings' || /^[a-z]+-track$/.test(b.app)) || b.version !== 1 || !Array.isArray(b.payments)) {
+    throw new Error('Not a ChaChing backup file (expected version 1 with a payments list).')
   }
   for (const p of b.payments) {
     if (typeof p.id !== 'string' || !p.id || /\//.test(p.id)) throw new Error('Backup contains a payment without a valid id.')

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { parseDashboardText } from './parser'
 import { planImport } from './sync'
 import { commitImport, MemoryDb, restoreBackup, validateBackup, type Backup } from './store'
+import { toBackup } from './export'
 import { DEFAULT_SETTINGS, type Payment } from './types'
 import { NOW, pageWith } from '../test/fixtures/sample'
 
@@ -17,7 +18,7 @@ async function sync(db: MemoryDb, rows: string[], summary = '') {
 }
 
 const backup: Backup = validateBackup({
-  app: 'rashio',
+  app: 'chaching',
   version: 1,
   exportedAt: '2026-11-25T00:00:00Z',
   payments: [
@@ -45,8 +46,15 @@ describe('one-time backup migration', () => {
     expect(p).toMatchObject({ hours: 31.02, earningsCents: 263670, status: 'paid', releaseDate: '2026-12-02' })
   })
 
-  it('rejects files that are not Rashio backups', () => {
-    expect(() => validateBackup({ foo: 1 })).toThrow(/Not a Rashio backup/)
+  it('still reads backups made before the ChaChing rename, and new backups are signed chaching', () => {
+    for (const app of ['chaching', 'rashio', 'my-earnings', 'earnings-track']) expect(validateBackup({ ...backup, app }).payments).toHaveLength(3)
+    const fresh = toBackup(backup.payments)
+    expect(fresh.app).toBe('chaching')
+    expect(validateBackup(JSON.parse(JSON.stringify(fresh))).payments).toHaveLength(3)
+  })
+
+  it('rejects files that are not ChaChing backups', () => {
+    expect(() => validateBackup({ foo: 1 })).toThrow(/Not a ChaChing backup/)
     expect(() => validateBackup({ ...backup, payments: [{ ...backup.payments[0], earningsCents: 1.5 }] })).toThrow(/integer/)
   })
 })

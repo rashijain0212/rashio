@@ -117,7 +117,7 @@ export interface Settings {
   sheetsSpreadsheetId?: string | null
   /** Display name of the chosen spreadsheet */
   sheetsSpreadsheetName?: string | null
-  /** true once the spreadsheet was chosen in Google's picker (or created by Rashio) */
+  /** true once the spreadsheet was chosen in Google's picker (or created by ChaChing) */
   sheetsFileAccess?: boolean
   sheetsAutoSync?: boolean
   sheetsLastSyncAt?: number | null

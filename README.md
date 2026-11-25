@@ -1,11 +1,11 @@
-# Rashio
+# ChaChing
 
 A private, free-tier personal earnings tracker for contract work.
-Paste the text of your earnings page, and Rashio parses it,
+Paste the text of your earnings page, and ChaChing parses it,
 syncs it to your own Firestore space without creating duplicates, and shows
 earnings by **work period** (not payout date) on a pastel dashboard.
 
-Live: https://rashio.web.app
+Live: https://mychaching.web.app
 
 ## Features
 

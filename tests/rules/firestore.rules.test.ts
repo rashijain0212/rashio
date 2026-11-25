@@ -150,8 +150,8 @@ describe('app writes satisfy the rules (real transactions)', () => {
         ),
     }
     const hist = [{ id: 'h1', contract: 'Drafter', type: 'hourly', workStart: '2026-11-21', workEnd: '2026-11-27', payoutDate: '2026-12-02', hours: 1.5, earningsCents: 12750, rateCents: 8500, status: 'pending', releaseDate: null, source: 'manual', createdAt: 1, updatedAt: 1 }]
-    const r1 = await restoreBackup(db, 'carol', { app: 'rashio', version: 1, exportedAt: 'x', payments: hist as Payment[] })
-    const r2 = await restoreBackup(db, 'carol', { app: 'rashio', version: 1, exportedAt: 'x', payments: hist as Payment[] })
+    const r1 = await restoreBackup(db, 'carol', { app: 'chaching', version: 1, exportedAt: 'x', payments: hist as Payment[] })
+    const r2 = await restoreBackup(db, 'carol', { app: 'chaching', version: 1, exportedAt: 'x', payments: hist as Payment[] })
     if (r1.written !== 1 || r2.skipped !== 1) throw new Error('restore not idempotent')
     const read = async () => (await getDocs(collection(fs, 'users/carol/payments'))).docs.map((d) => ({ ...(d.data() as Payment), id: d.id }))
     const meta = async () => ((await getDoc(doc(fs, 'users/carol/meta/sync'))).data()?.revision as number) ?? 0

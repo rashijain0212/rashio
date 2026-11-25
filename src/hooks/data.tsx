@@ -35,11 +35,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e) {
           const code = (e as { code?: string }).code
           if (code === 'auth/popup-blocked') {
-            await signInWithRedirect(auth, googleProvider).catch((err) => setError(`Sign-in failed: ${friendlyError(err)}`))
+            await signInWithRedirect(auth, googleProvider).catch(() => setError('Your browser blocked the Google sign-in window. Allow pop-ups for this site and try again.'))
           } else if (code === 'auth/operation-not-allowed' || code === 'auth/configuration-not-found')
-            setError('Google sign-in is not enabled for this Firebase project yet.')
-          else if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request')
-            setError((e as Error).message)
+            setError("Google sign-in isn't available right now. Please try again in a moment.")
+          else if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' || code === 'auth/user-cancelled')
+            setError("Sign-in wasn't completed. Continue with Google when you're ready.")
+          else setError(friendlyError(e))
         }
       },
       signOut: async () => {
@@ -84,11 +85,14 @@ const DataCtx = createContext<DataState | null>(null)
 
 export function friendlyError(e: unknown): string {
   const code = (e as { code?: string }).code ?? ''
-  if (code.includes('permission-denied')) return 'Access denied by the database. Please sign out and sign in again.'
-  if (code.includes('unavailable')) return 'Cannot reach the cloud database. Check your internet connection.'
-  if (code.includes('failed-precondition')) return 'The database is not ready. Please refresh the page.'
-  if (code.includes('unauthenticated')) return 'Your session expired. Please sign in again.'
-  return (e as Error)?.message || 'Unknown database error.'
+  if (code.includes('permission-denied')) return "ChaChing couldn't access your records. Sign out and sign in again; your data is safe."
+  if (code.includes('unavailable') || code.includes('network-request-failed')) return "You're offline. Connect to load your earnings."
+  if (code.includes('failed-precondition')) return 'The database is still getting ready. Reload the page in a moment.'
+  if (code.includes('unauthenticated')) return 'Your session expired. Sign in again to continue; your data is safe.'
+  const msg = (e as Error)?.message
+  // Our own errors are already written for people; raw Firebase text is not.
+  if (msg && !/firebase|\(auth\/|\(firestore\//i.test(msg)) return msg
+  return 'Something unexpected happened. Your saved earnings are unchanged.'
 }
 
 export function DataProvider({ uid, children }: { uid: string; children: ReactNode }) {

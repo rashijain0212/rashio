@@ -57,7 +57,7 @@
       "redirects": [
         {
           "source": "/:path*",
-          "destination": "https://rashio.web.app/:path*",
+          "destination": "https://mychaching.web.app/:path*",
           "type": 301
         }
       ]
@@ -68,7 +68,18 @@
       "redirects": [
         {
           "source": "/:path*",
-          "destination": "https://rashio.web.app/:path*",
+          "destination": "https://mychaching.web.app/:path*",
+          "type": 301
+        }
+      ]
+    },
+    {
+      "target": "legacy3",
+      "public": "legacy-redirect",
+      "redirects": [
+        {
+          "source": "/:path*",
+          "destination": "https://mychaching.web.app/:path*",
           "type": 301
         }
       ]

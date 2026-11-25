@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Rashio — every document lives under /users/{uid}/ and is only
+// ChaChing — every document lives under /users/{uid}/ and is only
 // readable/writable by the signed-in owner. Everything else is denied.
 service cloud.firestore {
   match /databases/{database}/documents {

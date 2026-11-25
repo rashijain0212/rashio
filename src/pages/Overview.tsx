@@ -10,10 +10,10 @@ import { Table, Td, Th, Empty } from '@/components/Table'
 import { StackedBars, TYPE_SERIES, activeSeries } from '@/components/Charts'
 import { cycleBucket, effectiveHourlyCents, groupBy, groupTotals, lifetimeTotals, monthBucket, rangeTotals, upcomingPayouts, emptyTotals, type Totals } from '@/lib/calc'
 import { projectRows } from '@/lib/projects'
-import { useReconciliation } from '@/components/CloudStatus'
+import { timeAgo, useReconciliation } from '@/components/CloudStatus'
 import { setReconciliationAccepted } from '@/lib/store'
 import { firestoreDb } from '@/lib/firebase'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Sheet } from 'lucide-react'
 import { formatCents } from '@/lib/money'
 import { cycleFor, cycleLabel, formatDate, monthLabel, todayISO, addDays, daysInclusive, monthBounds, ordinal } from '@/lib/dates'
 
@@ -124,43 +124,82 @@ export function Overview() {
         <PageHeader title="Overview" subtitle="Earnings attributed by work period" />
         <Card className="p-6 text-center">
           <h2 className="mb-1 text-base font-semibold">No earnings yet</h2>
-          <p className="mb-4 text-sm text-ink-soft">Copy your entire earnings page and paste it into Import &amp; Sync.</p>
+          <p className="mb-4 text-sm text-ink-soft">Your earnings will appear here after your first import.</p>
           <Button asChild variant="accent"><Link to="/import"><RefreshCw /> Import earnings</Link></Button>
         </Card>
       </>
     )
   }
 
+  const paidPct = v.life.totalCents ? (v.life.paidCents / v.life.totalCents) * 100 : 0
+  const avgAll = v.life.hours > 0 ? Math.round(v.life.totalCents / v.life.hours) : null
+  // After "Keep my payments as they are", the dashboard's figures from that paste are not shown.
+  const showReported = !!s && !recon.accepted
+  const dateLine = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+
   return (
     <>
-      <PageHeader
-        title="Overview"
-        subtitle={<>{payments.length} payments saved · Last synced {meta.lastSyncAt ? new Date(meta.lastSyncAt).toLocaleString() : 'never'} · attributed by work period</>}
-      />
+      <PageHeader title="Overview" subtitle={<>{dateLine} · {payments.length} saved payments</>} />
 
       <ReconBanner />
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
-        <StatCard tone="total" label="Total earnings" value={formatCents(v.life.totalCents)} sub={lastDelta !== null ? `${lastDelta >= 0 ? '+' : '−'}${formatCents(Math.abs(lastDelta))} since previous import` : `${v.life.count} payments`} />
-        <StatCard tone="paid" label="Paid" value={formatCents(v.life.paidCents)} sub={v.life.totalCents ? `${((v.life.paidCents / v.life.totalCents) * 100).toFixed(0)}% of total` : undefined} />
-        <StatCard tone="pending" label="Pending" value={formatCents(v.life.pendingCents)} sub="Upcoming / processing" />
-        <StatCard tone="hourly" label="Hours worked" value={v.life.hours.toFixed(2)} sub="rounded hours" />
-        <StatCard tone="hourly" label="Hourly income" value={formatCents(v.life.hourlyCents)} sub={hourly ? `≈ ${formatCents(hourly)}/hr effective` : undefined} hint="Effective rate = hourly earnings ÷ rounded hours, so it can differ slightly from your contract rate." />
-        <StatCard tone="incentive" label="Incentives & trials" value={formatCents(v.life.incentiveCents + v.life.trialCents)} sub={`Trials ${formatCents(v.life.trialCents)}`} />
-      </div>
 
-      {s && (
-        <div className="mt-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          <StatCard tone="support" label="Dashboard lifetime" value={formatCents(s.lifetimeCents)} sub={s.lifetimeCents !== null && s.lifetimeCents !== v.life.totalCents ? (recon.accepted ? <>Difference of {formatCents(Math.abs(v.life.totalCents - s.lifetimeCents))} accepted · <button className="underline" onClick={() => setReconciliationAccepted(firestoreDb, uid, null)}>show warning again</button></> : `Tracked is ${formatCents(Math.abs(v.life.totalCents - s.lifetimeCents))} ${v.life.totalCents < s.lifetimeCents ? 'below' : 'above'} this`) : 'Matches your tracked total'} hint={`As shown on the dashboard at the last sync.${s.chartTotalCents != null ? ` The "Earnings over time" chart showed ${formatCents(s.chartTotalCents)} (it refreshes separately).` : ''}`} />
-          <StatCard tone="support" label="Current payout" value={formatCents(s.currentPayoutCents)} sub={s.payoutInTransit ?? s.stripeStatus ?? undefined} />
-          <StatCard
-            tone={s.nextPayoutDate && s.nextPayoutDate < today ? 'pending' : 'support'}
-            label="Next payout (dashboard)"
-            value={`${s.nextPayoutApprox ? '~' : ''}${formatCents(s.nextPayoutCents)}`}
-            sub={s.nextPayoutDate ? (s.nextPayoutDate < today ? `Estimated ${formatDate(s.nextPayoutDate)} — past date, the dashboard's estimate looks stale` : `${s.nextPayoutStatus ?? 'Estimated'} · ${formatDate(s.nextPayoutDate)}`) : undefined}
-            hint="As reported by the dashboard. The Upcoming payouts list below is calculated from your saved payments."
-          />
-          <StatCard tone="support" label="Paid this month" value={formatCents(s.paidThisMonthCents)} sub={s.payoutCount !== null ? `${s.payoutCount} payouts total` : undefined} />
+      <Card className="p-4 sm:p-5">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)]">
+          <div className="rounded-xl bg-total px-4 py-3.5">
+            <div className="text-xs font-medium uppercase tracking-wide text-ink/80">Total earnings · lifetime</div>
+            <div className="num mt-1 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{formatCents(v.life.totalCents)}</div>
+            <div className="mt-1 text-xs text-ink/80">
+              {lastDelta !== null && lastDelta !== 0 ? `${lastDelta > 0 ? '+' : '−'}${formatCents(Math.abs(lastDelta))} from your last import · ` : ''}attributed by work period
+            </div>
+            <div className="mt-4" aria-label={`Paid ${paidPct.toFixed(1)}%, pending ${(100 - paidPct).toFixed(1)}%`}>
+              <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-white/70">
+                <div className="rounded-full bg-[#6FBF7E]" style={{ width: `${paidPct}%` }} />
+                <div className="rounded-full bg-[#F0B44C]" style={{ width: `${100 - paidPct}%` }} />
+              </div>
+              <div className="mt-1.5 flex justify-between text-[11px] text-ink/80">
+                <span><span aria-hidden className="mr-1 inline-block size-2 rounded-full bg-[#6FBF7E]" />Paid {paidPct.toFixed(1)}%</span>
+                <span><span aria-hidden className="mr-1 inline-block size-2 rounded-sm bg-[#F0B44C]" />Pending {(100 - paidPct).toFixed(1)}%</span>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            <StatCard tone="paid" label="Paid / released" value={formatCents(v.life.paidCents)} sub="By the platform" hint="Released by the earnings platform. Bank arrival is not tracked and can take a few more days." />
+            <StatCard tone="pending" label="Awaiting payment" value={formatCents(v.life.pendingCents)} sub="Upcoming or processing" />
+            <StatCard tone="hourly" label="Hours worked" value={`${v.life.hours.toFixed(2)} h`} sub="As rounded by the dashboard" />
+            <StatCard tone="hourly" label="Hourly income" value={formatCents(v.life.hourlyCents)} sub={hourly ? `Effective rate ${formatCents(hourly)}/h` : undefined} hint="Effective rate = hourly pay ÷ rounded hours. It can differ slightly from your contract rate." />
+            <StatCard tone="incentive" label="Incentives & trials" value={formatCents(v.life.incentiveCents + v.life.trialCents)} sub={v.life.trialCents ? `incl. ${formatCents(v.life.trialCents)} trials` : undefined} />
+            <StatCard tone="support" label="Earnings per hour" value={avgAll ? `${formatCents(avgAll)}/h` : '—'} sub="Including incentives & trials" hint="Includes incentives and trials, so it is higher than the effective hourly rate." />
+          </div>
         </div>
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-3 text-xs">
+          <ReconStatus />
+          <SheetStatus />
+        </div>
+      </Card>
+
+      {showReported && (
+        <Card className="mt-3 px-4 py-3">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <div className="text-xs font-medium uppercase tracking-wide text-ink-soft">Imported from your earnings dashboard</div>
+            <div className="text-[11px] text-ink-faint">As shown at your last paste{meta.lastSummaryAt ? ` · ${new Date(meta.lastSummaryAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}</div>
+          </div>
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div><dt className="text-[11px] text-ink-soft">Lifetime total</dt><dd className="num font-semibold">{formatCents(s!.lifetimeCents)}</dd></div>
+            <div><dt className="text-[11px] text-ink-soft">Current payout</dt><dd className="num font-semibold">{formatCents(s!.currentPayoutCents)}</dd>{s!.payoutInTransit && <dd className="text-[11px] text-ink-soft">{s!.payoutInTransit}</dd>}</div>
+            <div>
+              <dt className="text-[11px] text-ink-soft">Next payout</dt>
+              <dd className="num font-semibold">{s!.nextPayoutApprox ? '~' : ''}{formatCents(s!.nextPayoutCents)}</dd>
+              {s!.nextPayoutDate && <dd className={s!.nextPayoutDate < today ? 'text-[11px] text-pending-ink' : 'text-[11px] text-ink-soft'}>{s!.nextPayoutDate < today ? `Estimated ${formatDate(s!.nextPayoutDate, false)} — date has passed` : `Estimated ${formatDate(s!.nextPayoutDate, false)}`}</dd>}
+            </div>
+            <div><dt className="text-[11px] text-ink-soft">Paid this month</dt><dd className="num font-semibold">{formatCents(s!.paidThisMonthCents)}</dd>{s!.payoutCount !== null && <dd className="text-[11px] text-ink-soft">{s!.payoutCount} payouts total</dd>}</div>
+          </dl>
+        </Card>
+      )}
+      {s && recon.accepted && (
+        <p className="mt-3 text-xs text-ink-soft">
+          Dashboard figures from your last paste are hidden because you kept your saved payments. Paste again to refresh them ·{' '}
+          <button className="underline" onClick={() => setReconciliationAccepted(firestoreDb, uid, null)}>show them again</button>
+        </p>
       )}
 
       <div className="mt-4 grid gap-4 xl:grid-cols-5">
@@ -209,11 +248,11 @@ export function Overview() {
 
       <div className="mt-4 grid gap-4 2xl:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle>Project earnings</CardTitle><span className="text-[11px] text-ink-soft">Tracked from your payments · the dashboard's own total alongside</span></CardHeader>
+          <CardHeader><CardTitle>Project earnings</CardTitle><span className="text-[11px] text-ink-soft">Tracked from your payments{recon.accepted ? '' : " · the dashboard's own total alongside"}</span></CardHeader>
           <CardContent>
             {v.projects.length ? (
               <Table>
-                <thead><tr><Th>Project</Th><Th className="hidden sm:table-cell">Contracts</Th><Th>Tracked</Th><Th>Dashboard</Th><Th className="hidden sm:table-cell">Status</Th></tr></thead>
+                <thead><tr><Th>Project</Th><Th className="hidden sm:table-cell">Contracts</Th><Th>Tracked</Th>{!recon.accepted && <Th>Dashboard</Th>}<Th className="hidden sm:table-cell">Status</Th></tr></thead>
                 <tbody>
                   {v.projects.map((p) => (
                     <tr key={p.name}>
@@ -226,17 +265,17 @@ export function Overview() {
                         {p.source === 'learned' && <span className="ml-1 text-[10px]">(auto)</span>}
                       </Td>
                       <Td className="num font-semibold">{formatCents(p.trackedCents)}</Td>
-                      <Td className="num whitespace-nowrap">
+                      {!recon.accepted && <Td className="num whitespace-nowrap">
                         {formatCents(p.reportedCents)}
                         {p.trackedCents !== null && p.reportedCents !== null && p.trackedCents !== p.reportedCents && (
                           <span className="ml-1 rounded bg-pending px-1 text-[10px] text-pending-ink" title="Tracked payments differ from the dashboard's project card">{p.trackedCents > p.reportedCents ? '+' : '−'}{formatCents(Math.abs(p.trackedCents - p.reportedCents))}</span>
                         )}
-                      </Td>
+                      </Td>}
                       <Td className="hidden sm:table-cell">{p.active === null ? '—' : p.active ? <span className="rounded bg-paid px-1.5 text-[11px] text-paid-ink">Active</span> : <span className="rounded bg-support px-1.5 text-[11px] text-ink-soft">Inactive</span>}</Td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot><tr className="bg-total/60 font-semibold"><Td>Total</Td><Td className="hidden sm:table-cell" /><Td className="num">{formatCents(v.projects.reduce((a, p) => a + (p.trackedCents ?? 0), 0))}</Td><Td className="num">{formatCents(v.projects.reduce((a, p) => a + (p.reportedCents ?? 0), 0))}</Td><Td className="hidden sm:table-cell" /></tr></tfoot>
+                <tfoot><tr className="bg-total/60 font-semibold"><Td>Total</Td><Td className="hidden sm:table-cell" /><Td className="num">{formatCents(v.projects.reduce((a, p) => a + (p.trackedCents ?? 0), 0))}</Td>{!recon.accepted && <Td className="num">{formatCents(v.projects.reduce((a, p) => a + (p.reportedCents ?? 0), 0))}</Td>}<Td className="hidden sm:table-cell" /></tr></tfoot>
               </Table>
             ) : <Empty>Project totals appear after your next import of the full earnings page (the project cards are read automatically). You can also map projects to contracts in Settings.</Empty>}
           </CardContent>
@@ -273,7 +312,7 @@ function ReconBanner() {
   const amt = formatCents(Math.abs(r.diff))
   const keep = async () => {
     const ok = window.confirm(
-      `Keep your payments as they are?\n\n• Your saved payments stay exactly as they are (${formatCents(r.tracked)}).\n• The dashboard total (${formatCents(r.reported)}) stays recorded for reference.\n• Rashio stops warning about this ${amt} difference.\n\nIf either total changes later (for example after a new paste), the warning comes back. You can also turn it back on from the Dashboard lifetime card.`,
+      `Keep your payments as they are?\n\n• Your saved payments stay exactly as they are (${formatCents(r.tracked)}).\n• The dashboard's figures from that paste (${formatCents(r.reported)} lifetime) are hidden, so Overview shows only what your payments add up to.\n• ChaChing stops warning about this ${amt} difference.\n\nPasting the dashboard again brings in fresh figures. You can also show the hidden ones again from Overview.`,
     )
     if (!ok) return
     setBusy(true)
@@ -296,10 +335,10 @@ function ReconBanner() {
   } else if (r.diff > 0 && r.summaryNewer) {
     reason = 'The latest paste updated the dashboard totals but not the payments. Paste the full page again.'
   } else if (r.diff > 0) {
-    reason = 'Some payments are missing — usually older ones that are no longer on the dashboard. Add them in Payments, or paste again if the dashboard was still refreshing.'
+    reason = 'Possible causes: older payments that are no longer on the dashboard, or dashboard totals that had not refreshed yet. Check Payments, or paste again later.'
     action = { to: '/payments', label: 'Open Payments' }
   } else {
-    reason = 'You may have a duplicate or a manual entry the dashboard does not have, or the dashboard has not refreshed yet.'
+    reason = 'Possible causes: a duplicate or manual entry the dashboard does not have, or dashboard totals that had not refreshed yet.'
     action = { to: '/payments', label: 'Open Payments' }
   }
   void meta
@@ -308,7 +347,7 @@ function ReconBanner() {
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="font-semibold">
-          Tracked total is {amt} {r.diff > 0 ? 'below' : 'above'} the dashboard ({formatCents(r.tracked)} vs {formatCents(r.reported)}).
+          Your tracked total differs from the reported total by {amt} ({formatCents(r.tracked)} tracked vs {formatCents(r.reported)} reported).
         </div>
         <div>{reason}</div>
       </div>
@@ -319,5 +358,30 @@ function ReconBanner() {
         </button>
       </div>
     </div>
+  )
+}
+
+function ReconStatus() {
+  const r = useReconciliation()
+  if (r.diff === null) return <span className="text-ink-soft">Paste your dashboard to compare with reported earnings</span>
+  if (r.diff === 0)
+    return (
+      <span className="inline-flex items-center gap-1.5 text-paid-ink">
+        <CheckCircle2 className="size-4" /> Tracked total matches reported earnings
+      </span>
+    )
+  if (r.accepted) return <span className="text-ink-soft">Showing your saved payments only (difference accepted)</span>
+  return <span className="inline-flex items-center gap-1.5 text-pending-ink"><AlertTriangle className="size-4" /> Tracked total differs from reported by {formatCents(Math.abs(r.diff))}</span>
+}
+
+function SheetStatus() {
+  const { settings } = useData()
+  const ok = !!settings.sheetsSpreadsheetId && settings.sheetsFileAccess === true
+  return (
+    <Link to="/spreadsheets" className="inline-flex items-center gap-1.5 text-ink-soft hover:text-ink">
+      <Sheet className="size-4" />
+      {!ok ? 'Spreadsheet not connected' : settings.sheetsLastError ? <span className="text-pending-ink">Spreadsheet needs attention</span> : `Spreadsheet updated ${settings.sheetsLastSyncAt ? timeAgo(settings.sheetsLastSyncAt) : 'not yet'}`}
+      <ArrowRight className="size-3" />
+    </Link>
   )
 }

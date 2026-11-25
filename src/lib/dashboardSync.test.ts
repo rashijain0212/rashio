@@ -48,7 +48,7 @@ function history(): Payment[] {
 }
 async function seeded() {
   const db = new MemoryDb()
-  await restoreBackup(db, UID, { app: 'rashio', version: 1, exportedAt: 'x', payments: history() })
+  await restoreBackup(db, UID, { app: 'chaching', version: 1, exportedAt: 'x', payments: history() })
   return db
 }
 

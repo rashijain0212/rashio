@@ -227,7 +227,7 @@ function monthTemplate(short: string, rows: number): Grid {
     [short, '=B4', '=D4'],
     [],
     ['*Work date = period end or recorded incentive/trial date; used for 21st-to-21st totals.'],
-    ['Actual reported amounts used; hours are rounded. Written by Rashio.'],
+    ['Actual reported amounts used; hours are rounded. Written by ChaChing.'],
   ].map((r, i) => (i === t - 1 ? r : r))
 }
 
@@ -292,7 +292,7 @@ const OVERVIEW = 'Overview'
 function overviewTemplate(): Grid {
   return [
     ['Earnings overview'],
-    ['Grouped by work period, not payout date · USD · written by Rashio'],
+    ['Grouped by work period, not payout date · USD · written by ChaChing.'],
     ['Total earned', '=E10', 'Paid', '=F10', 'Pending', '=G10'],
     ['Hours', '=B10', 'Hourly pay', '=C10', 'Incentives / trial', '=D10'],
     [],
@@ -389,7 +389,7 @@ async function writeDataTab(api: SheetsApi, tabs: TabInfo[], model: SheetModel, 
   if (!tabs.find((t) => t.title === DATA_TAB)) await api.batch([{ addSheet: { properties: { title: DATA_TAB, index: tabs.length } } }])
   await api.clear(`${q(DATA_TAB)}!A1:Z5000`)
   await api.write(
-    [{ range: `${q(DATA_TAB)}!A1`, values: [[`Synced from Rashio ${syncedAt.toISOString()} — this tab is rewritten on every sync`], ...model.data] }],
+    [{ range: `${q(DATA_TAB)}!A1`, values: [[`Synced from ChaChing ${syncedAt.toISOString()} — this tab is rewritten on every sync`], ...model.data] }],
     'RAW',
   )
 }

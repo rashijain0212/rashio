@@ -2,7 +2,7 @@
 // Google OAuth token (no server, no stored secrets). The token is requested via
 // a Google popup and kept in memory only (~1 hour).
 //
-// Permission is "drive.file": Rashio can only open spreadsheets it created or
+// Permission is "drive.file": ChaChing can only open spreadsheets it created or
 // that the user picked with Google's file picker — not the rest of their Drive.
 // Google treats this as non-sensitive, so no "unverified app" warning appears.
 
@@ -50,10 +50,10 @@ async function call<T>(url: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>
 }
 
-/** Rashio has not been given access to this spreadsheet (pick it once in Settings). */
+/** ChaChing has not been given access to this spreadsheet (pick it once on the Spreadsheets page). */
 export class SheetsNoFileAccessError extends Error {
   constructor(detail: string) {
-    super(`Rashio can't open this spreadsheet yet. In Settings, click "Choose spreadsheet" and select it once. (${detail})`)
+    super(`ChaChing can't open this spreadsheet yet. On the Spreadsheets page, click "Choose spreadsheet" and select it once. Your earnings are already saved. (${detail})`)
     this.name = 'SheetsNoFileAccessError'
   }
 }
@@ -128,7 +128,7 @@ function loadPicker(): Promise<void> {
 
 /**
  * Opens Google's file picker (inside the page) so the user can choose the
- * spreadsheet Rashio may edit. Needs a token from connectGoogleSheets().
+ * spreadsheet ChaChing may edit. Needs a token from connectGoogleSheets().
  * Resolves with the spreadsheet id, or null if the user closed the picker.
  */
 export async function pickSpreadsheet(): Promise<{ id: string; name: string } | null> {
@@ -143,7 +143,7 @@ export async function pickSpreadsheet(): Promise<{ id: string; name: string } | 
       .setOAuthToken(token!.value)
       .setDeveloperKey(env.VITE_FIREBASE_API_KEY)
       .setAppId(env.VITE_FIREBASE_MESSAGING_SENDER_ID)
-      .setTitle('Choose the spreadsheet Rashio may update')
+      .setTitle('Choose the spreadsheet ChaChing may update')
       .setCallback((data: { action: string; docs?: { id: string; name: string }[] }) => {
         if (data.action === g.Action.PICKED && data.docs?.[0]) resolve({ id: data.docs[0].id, name: data.docs[0].name })
         else if (data.action === g.Action.CANCEL) resolve(null)

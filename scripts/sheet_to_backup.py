@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One-time migration: convert the old earnings spreadsheet (.xlsx) into a
-Rashio JSON backup that can be restored from Settings -> Restore.
+ChaChing JSON backup that can be restored from Settings -> Restore.
 
 Usage:  python3 scripts/sheet_to_backup.py "path/to/sheet.xlsx" private/backup.json [year]
 
@@ -120,7 +120,7 @@ def main():
                 "updatedAt": now,
             })
     backup = {
-        "app": "rashio",
+        "app": "chaching",
         "version": 1,
         "exportedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
         "settings": {"hourlyRates": [65, 85], "cycleStartDay": 21, "rateTolerancePct": 3},

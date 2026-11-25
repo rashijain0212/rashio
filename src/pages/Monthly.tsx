@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useData } from '@/hooks/data'
 import { usePaymentActions } from '@/hooks/actions'
 import { PageHeader } from '@/components/PageHeader'
@@ -76,9 +77,9 @@ export default function Monthly() {
         title="Monthly earnings"
         subtitle="Grouped by when the work happened, not when it was paid"
         actions={
-          <div className="inline-flex rounded-lg bg-white p-0.5 text-xs font-medium">
+          <div className="inline-flex rounded-lg border border-line bg-white p-0.5 text-xs font-medium" role="group" aria-label="Group by">
             {(['month', 'cycle'] as Mode[]).map((m) => (
-              <button key={m} onClick={() => { setMode(m); setSelected(null) }} className={cn('rounded-md px-2.5 py-1.5', mode === m ? 'bg-ink text-white' : 'text-ink-soft hover:bg-support')}>
+              <button key={m} onClick={() => { setMode(m); setSelected(null) }} aria-pressed={mode === m} className={cn('rounded-md px-2.5 py-1.5', mode === m ? 'bg-brand text-ink' : 'text-ink-soft hover:bg-support')}>
                 {m === 'month' ? 'Calendar months' : `${ordinal(settings.cycleStartDay)} → ${ordinal(settings.cycleStartDay)} cycles`}
               </button>
             ))}
@@ -87,9 +88,23 @@ export default function Monthly() {
       />
 
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Select aria-label="Period" value={active ?? ''} onChange={(e) => setSelected(e.target.value)} className="col-span-2 sm:col-span-1">
-          {keys.map((k) => <option key={k} value={k}>{label(k)}</option>)}
-        </Select>
+        <div className="col-span-2 flex min-w-0 items-center gap-1 sm:col-span-1">
+          <button
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-white text-ink-soft hover:bg-support disabled:opacity-40"
+            aria-label={mode === 'month' ? 'Previous month' : 'Previous cycle'}
+            disabled={!active || keys.indexOf(active) >= keys.length - 1}
+            onClick={() => active && setSelected(keys[keys.indexOf(active) + 1])}
+          ><ChevronLeft className="size-4" /></button>
+          <Select aria-label="Period" value={active ?? ''} onChange={(e) => setSelected(e.target.value)} className="min-w-0 flex-1">
+            {keys.map((k) => <option key={k} value={k}>{label(k)}</option>)}
+          </Select>
+          <button
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-white text-ink-soft hover:bg-support disabled:opacity-40"
+            aria-label={mode === 'month' ? 'Next month' : 'Next cycle'}
+            disabled={!active || keys.indexOf(active) <= 0}
+            onClick={() => active && setSelected(keys[keys.indexOf(active) - 1])}
+          ><ChevronRight className="size-4" /></button>
+        </div>
         <Select aria-label="Contract filter" value={contract} onChange={(e) => setContract(e.target.value)}>
           <option value="">All contracts</option>
           {contracts.map((c) => <option key={c}>{c}</option>)}

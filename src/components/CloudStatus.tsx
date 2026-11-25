@@ -14,12 +14,12 @@ export function timeAgo(ms: number | null): string {
 }
 
 export function CloudStatusBadge({ className, compact }: { className?: string; compact?: boolean }) {
-  const { cloud } = useData()
+  const { cloud, payments } = useData()
   const map = {
     synced: { icon: CheckCircle2, text: 'Saved to cloud', cls: 'bg-paid text-paid-ink' },
     saving: { icon: Loader2, text: 'Saving…', cls: 'bg-pending text-pending-ink' },
     connecting: { icon: Cloud, text: 'Connecting…', cls: 'bg-support text-ink-soft' },
-    offline: { icon: CloudOff, text: 'Offline — showing last saved copy', cls: 'bg-pending text-pending-ink' },
+    offline: { icon: CloudOff, text: payments.length ? "You're offline · showing last confirmed records" : "You're offline", cls: 'bg-pending text-pending-ink' },
     error: { icon: AlertTriangle, text: 'Cloud error', cls: 'bg-danger/10 text-danger' },
   }[cloud]
   const Icon = map.icon
