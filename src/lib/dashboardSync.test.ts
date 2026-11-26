@@ -333,6 +333,57 @@ describe('several pages pasted together', () => {
   })
 })
 
+describe('released payouts still on their way to the bank', () => {
+  // The dashboard moves a payout from "Upcoming · Releases today" to
+  // "Released · Expected by <date>" while the money is in transit.
+  const onTheWay: Row = { ...R.draftPrev, status: 'Released', release: 'Expected by Dec 2, 2026' }
+
+  it('reads "Expected by <date>" in both clipboard layouts', () => {
+    for (const t of [page([onTheWay]), dashboardCells({ lifetime: LIFE, rows: [onTheWay], projects: [] })]) {
+      const r = parseDashboardText(t, { now: NOW })
+      expect(r.unparsedLines).toEqual([])
+      expect(r.payments).toHaveLength(1)
+      expect(r.payments[0]).toMatchObject({ status: 'paid', releaseDate: '2026-12-02', releaseKind: 'expected', releaseText: 'Expected by Dec 2, 2026', hours: 40, earningsCents: 340000 })
+    }
+  })
+
+  it.each([
+    ['Expected on Dec 2, 2026', '2026-12-02', 'expected'],
+    ['Arrives by Dec 2, 2026', '2026-12-02', 'expected'],
+    ['Arriving Dec 2, 2026', '2026-12-02', 'expected'],
+    ['Due Dec 2, 2026', '2026-12-02', 'expected'],
+    ['Scheduled for Dec 2, 2026', '2026-12-02', 'expected'],
+    ['Estimated around Dec 2, 2026', '2026-12-02', 'expected'],
+    ['Arrived on Nov 28, 2026', '2026-11-28', 'actual'],
+  ])('reads the release wording "%s"', (release, date, kind) => {
+    const r = parseDashboardText(page([{ ...onTheWay, release }]), { now: NOW })
+    expect(r.unparsedLines).toEqual([])
+    expect(r.payments[0]).toMatchObject({ releaseDate: date, releaseKind: kind })
+  })
+
+  it('reads the current payout card while money is on the way', () => {
+    for (const t of [
+      page([onTheWay], { current: '$3,400.00', onTheWay: { label: 'On the way', arrives: 'Arrives Dec 2' } }),
+      dashboardCells({ lifetime: LIFE, rows: [onTheWay], projects: [], current: '$3,400.00', onTheWay: { label: 'On the way', arrives: 'Arrives Dec 2' } }),
+    ]) {
+      const s = parseDashboardText(t, { now: NOW }).summary
+      expect(s.currentPayoutCents).toBe(340000)
+      expect(s.payoutInTransit).toBe('On the way \u00b7 Arrives Dec 2')
+      expect(s.missing).toEqual([])
+    }
+  })
+
+  it('updates the same record when an upcoming payout becomes released, without a duplicate', async () => {
+    const db = new MemoryDb()
+    await sync(db, page(ALL))
+    const { plan } = await sync(db, page(ALL.map((r) => (r === R.draftPrev ? onTheWay : r))))
+    expect(kinds(plan)).toEqual({ unchanged: ALL.length - 1, update: 1 })
+    expect(stored(db)).toHaveLength(ALL.length)
+    const p = stored(db).find((x) => x.workStart === '2026-11-14' && x.contract === 'Drafter')!
+    expect(p).toMatchObject({ status: 'paid', releaseDate: '2026-12-02', earningsCents: 340000 })
+  })
+})
+
 describe('genuinely new rows mixed with existing ones', () => {
   const newWeek: Row = { payout: 'Dec 9, 2026', contract: 'Drafter', type: 'Contracts (Nov 28 - Dec 4)', status: 'Upcoming', release: 'Releases Dec 9, 2026', hours: '6.00', earned: '$510.00' }
   const newContract: Row = { payout: 'Dec 9, 2026', contract: 'Zeta Review', type: 'Contracts (Nov 28 - Dec 4)', status: 'Upcoming', release: 'Releases Dec 9, 2026', hours: '3.00', earned: '$195.00' }

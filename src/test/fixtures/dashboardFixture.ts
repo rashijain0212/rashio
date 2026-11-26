@@ -16,10 +16,18 @@ export function row(r: Row): string {
   return `${r.payout}${r.contract}${r.type}${r.status}${r.release}${r.hours}${r.earned}`
 }
 
+function currentCard(opts: { current?: string; onTheWay?: { label: string; arrives: string } }): string[] {
+  return opts.onTheWay
+    ? ['Current payout', opts.onTheWay.label, opts.current ?? '$0.00', opts.onTheWay.arrives]
+    : ['Current payout', opts.current ?? '$0.00', 'No payout in transit']
+}
+
 export function dashboard(opts: {
   lifetime: string
   chart?: string
   current?: string
+  /** Current payout card when money is moving, e.g. "On the way" … "Arrives Dec 2" */
+  onTheWay?: { label: string; arrives: string }
   next?: string
   nextDate?: string
   paidMonth?: string
@@ -33,7 +41,7 @@ export function dashboard(opts: {
     'Earnings',
     `Total earnings to date${opts.lifetime}`,
     'Stripe connected',
-    'Current payout', opts.current ?? '$0.00', 'No payout in transit',
+    ...currentCard(opts),
     'Next payout', 'Upcoming', `~${opts.next ?? '$0.05'}`, `Estimated ${opts.nextDate ?? 'Nov 18'}`,
     'Paid this month', 'Paid', opts.paidMonth ?? '$100.00', `${opts.payouts ?? 3} payouts`,
     'Earnings over time', opts.chart ?? opts.lifetime, 'Total earnings',
@@ -74,7 +82,7 @@ export function dashboardCells(opts: Parameters<typeof dashboard>[0]): string {
     'Earnings',
     'Total earnings to date', opts.lifetime,
     'Stripe connected',
-    'Current payout', opts.current ?? '$0.00', 'No payout in transit',
+    ...currentCard(opts),
     'Next payout', 'Upcoming', `~${opts.next ?? '$0.05'}`, `Estimated ${opts.nextDate ?? 'Nov 18'}`,
     'Paid this month', 'Paid', opts.paidMonth ?? '$100.00', `${opts.payouts ?? 3} payouts`,
     'Earnings over time', opts.chart ?? opts.lifetime, 'Total earnings',

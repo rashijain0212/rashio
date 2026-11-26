@@ -16,7 +16,7 @@ const TYPE_ALT =
   'Contracts?\\s*\\(([^)]*)\\)|Incentives?|Work\\s*[Tt]rials?(?:\\s*\\(([^)]*)\\))?|Bonus(?:es)?|Referrals?(?:\\s*[Bb]onus)?|Adjustments?|Reimbursements?|Other'
 const STATUS_ALT = 'Upcoming|Released|Paid|Pending|Processing|In transit|Scheduled|Failed|Cancell?ed|Reversed|Returned'
 const RELEASE_ALT =
-  `Releases?\\s+(?:today|tomorrow|yesterday)\\s*(?:\\((?:PST|PDT|PT)\\))?|(?:Releases?|Released|Sent|Paid|Expected|Estimated|Arrives?|Arrived)(?:\\s+on)?\\s+${FULL_DATE}`
+  `Releases?\\s+(?:today|tomorrow|yesterday)\\s*(?:\\((?:PST|PDT|PT)\\))?|(?:Releases?|Released|Sent|Paid|Expected|Estimated|Arrives?|Arrived|Arriving|Due|Scheduled)(?:\\s+(?:on|by|for|around|before))?\\s+${FULL_DATE}`
 
 /** A full payment row (cells joined, optional whitespace/tabs between them). */
 const ROW_RE = new RegExp(
@@ -247,7 +247,7 @@ export function parseCopiedDashboard(text: string, now: Date = new Date()): Pars
       } else if (
         new RegExp(`^${FULL_DATE}\\s*$`, 'i').test(line) &&
         buf.length >= 5 &&
-        !/^(releases?|released|sent|paid|expected|estimated|arrives?|arrived)(\s+on)?$/i.test(buf[buf.length - 1])
+        !/^(releases?|released|sent|paid|expected|estimated|arrives?|arrived|arriving|due|scheduled)(\s+(on|by|for|around|before))?$/i.test(buf[buf.length - 1])
       ) {
         // A new bare payout date while the previous row never reached an amount
         flush()
@@ -290,8 +290,9 @@ export function parseCopiedDashboard(text: string, now: Date = new Date()): Pars
   if (cur >= 0) {
     const m = moneyAfter(pre, cur + 1, 1)
     summary.currentPayoutCents = m?.cents ?? null
-    const t = pre.slice(cur + 1, cur + 4).find((l) => /payout in transit|in transit/i.test(l))
-    summary.payoutInTransit = t ?? null
+    // "No payout in transit", or "On the way" + "Arrives Dec 2" around the amount
+    const notes = pre.slice(cur + 1, cur + 4).filter((l) => /in transit|on the way|^arriv(es|ing|ed)\b|^expected\b/i.test(l))
+    summary.payoutInTransit = notes.length ? notes.join(' \u00b7 ') : null
   }
   const next = idx(/^next payout$/i)
   if (next >= 0) {
@@ -301,7 +302,7 @@ export function parseCopiedDashboard(text: string, now: Date = new Date()): Pars
     const st = pre.slice(next + 1, next + 3).find((l) => /^(upcoming|pending|processing|paid|scheduled)$/i.test(l))
     summary.nextPayoutStatus = st ?? null
     const est = pre.slice(next + 1, next + 5).find((l) => /^(estimated|expected|on)\s/i.test(l))
-    if (est) summary.nextPayoutDate = parseSingleDate(est.replace(/^(estimated|expected|on)\s+/i, ''), now)
+    if (est) summary.nextPayoutDate = parseSingleDate(est.replace(/^(estimated|expected|on)(\s+(on|by|for|around|before))?\s+/i, ''), now)
   }
   const ptm = idx(/^paid this month$/i)
   if (ptm >= 0) {

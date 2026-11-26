@@ -37,6 +37,17 @@ describe.runIf(existsSync(FILE) && existsSync(PAGE2))('real two-page paste (priv
   })
 })
 
+const RELEASED_IN_TRANSIT = resolve(import.meta.dirname, '../../private/paste-2026-11-26.txt')
+
+describe.runIf(existsSync(RELEASED_IN_TRANSIT))('real paste with a released payout on its way (private, local only)', () => {
+  it('reads every row, including "Released · Expected by <date>"', () => {
+    const r = parseDashboardText(readFileSync(RELEASED_IN_TRANSIT, 'utf8'), { now: new Date('2026-11-26T18:00:00Z') })
+    expect(r.unparsedLines).toEqual([])
+    expect(r.warnings).toEqual([])
+    expect(r.payments.some((p) => p.releaseText?.startsWith('Expected by'))).toBe(true)
+  })
+})
+
 const BACKUP = resolve(import.meta.dirname, '../../private/sheet-backup.json')
 
 describe.runIf(existsSync(FILE) && existsSync(BACKUP))('real backup + real dashboard paste (private, local only)', () => {
