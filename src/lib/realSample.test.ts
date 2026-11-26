@@ -23,6 +23,20 @@ describe.runIf(existsSync(FILE))('real dashboard sample (private, local only)', 
   })
 })
 
+const PAGE2 = resolve(import.meta.dirname, '../../private/paste-page2-2026-11-25.txt')
+
+describe.runIf(existsSync(FILE) && existsSync(PAGE2))('real two-page paste (private, local only)', () => {
+  it('reads the rows of both pages pasted together, in either order', () => {
+    const a = readFileSync(FILE, 'utf8')
+    const b = readFileSync(PAGE2, 'utf8')
+    const now = { now: new Date('2026-11-25T18:00:00Z') }
+    const one = parseDashboardText(a, now).payments.length + parseDashboardText(b, now).payments.length
+    expect(parseDashboardText(a + '\n' + b, now).payments).toHaveLength(one)
+    expect(parseDashboardText(b + '\n' + a, now).payments).toHaveLength(one)
+    expect(parseDashboardText(a + '\n' + b + '\n' + b, now).payments).toHaveLength(one)
+  })
+})
+
 const BACKUP = resolve(import.meta.dirname, '../../private/sheet-backup.json')
 
 describe.runIf(existsSync(FILE) && existsSync(BACKUP))('real backup + real dashboard paste (private, local only)', () => {

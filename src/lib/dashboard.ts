@@ -198,54 +198,68 @@ function moneyAfter(lines: string[], i: number, span = 3): { cents: number; at: 
 /** Returns null when the text does not look like the the dashboard dashboard row format. */
 export function parseCopiedDashboard(text: string, now: Date = new Date()): ParseResult | null {
   const lines = normalizeText(text)
-  const end = lines.findIndex((l) => FOOTER_RE.test(l))
-  const body = end >= 0 ? lines.slice(0, end) : lines
-
-  // Locate the payments table by its consecutive header cells.
-  let headerAt = -1
-  for (let i = 0; i < body.length; i++) {
-    const window = body.slice(i, i + HEADER_CELLS.length).map((l) => l.toLowerCase().trim())
-    const joined = body[i].toLowerCase()
-    if (window.join('|') === HEADER_CELLS.join('|') || HEADER_CELLS.every((h) => joined.includes(h))) {
-      headerAt = i
-      break
-    }
+  const isHeaderAt = (i: number) => {
+    const window = lines.slice(i, i + HEADER_CELLS.length).map((l) => l.toLowerCase().trim())
+    const joined = lines[i].toLowerCase()
+    return window.join('|') === HEADER_CELLS.join('|') || HEADER_CELLS.every((h) => joined.includes(h))
   }
+
+  // The owner may paste several pages of the table in one go (page 1, then
+  // page 2, ...). Each copy carries its own header and footer, so read rows
+  // from every table section, not just the first one.
+  const headers: number[] = []
+  for (let i = 0; i < lines.length; i++) if (isHeaderAt(i)) headers.push(i)
+  const headerAt = headers.length ? headers[0] : -1
+  const firstFooter = lines.findIndex((l) => FOOTER_RE.test(l))
+  const body = headerAt < 0 && firstFooter >= 0 ? lines.slice(0, firstFooter) : lines
 
   // Rows arrive either run together on one line or one cell per line (depends on
   // the browser). Group lines from a payout-date start until the amount cell.
   const payments: ParsedPayment[] = []
   const unparsed: string[] = []
-  const rowStart = headerAt >= 0 ? headerAt + HEADER_SPAN(body, headerAt) : 0
   const DATE_START = new RegExp(`^${FULL_DATE}`, 'i')
   const ENDS_WITH_MONEY = /-?\$\s?[\d,]+(?:\.\d{1,2})?\s*$/
+  // A row seen in an earlier section is the same page pasted twice: keep one.
+  const seenBefore = new Set<string>()
+  let seenHere = new Set<string>()
   let buf: string[] = []
   const flush = () => {
     if (!buf.length) return
     const joined = buf.join('\n')
+    const key = buf.join(' ').replace(/\s+/g, ' ').trim().toLowerCase()
+    buf = []
+    if (seenBefore.has(key)) return
+    seenHere.add(key)
     const p = parseRow(joined, now)
     if (p) payments.push(p)
-    else unparsed.push(`${buf.join(' \u00b7 ')}  \u2192  ${explainRow(joined)}`)
-    buf = []
+    else unparsed.push(`${joined.split('\n').join(' \u00b7 ')}  \u2192  ${explainRow(joined)}`)
   }
-  for (let i = rowStart; i < body.length; i++) {
-    const line = body[i].trim()
-    if (!line || /^[*\u2022]\s*$/.test(line)) continue
-    if (!buf.length) {
-      if (!DATE_START.test(line)) continue
-    } else if (
-      new RegExp(`^${FULL_DATE}\\s*$`, 'i').test(line) &&
-      buf.length >= 5 &&
-      !/^(releases?|released|sent|paid|expected|estimated|arrives?|arrived)(\s+on)?$/i.test(buf[buf.length - 1])
-    ) {
-      // A new bare payout date while the previous row never reached an amount
-      flush()
+  const sections: Array<[number, number]> = headers.length
+    ? headers.map((h, k) => [h + HEADER_SPAN(lines, h), k + 1 < headers.length ? headers[k + 1] : lines.length])
+    : [[0, body.length]]
+  for (const [from, to] of sections) {
+    for (let i = from; i < to; i++) {
+      const line = body[i].trim()
+      if (FOOTER_RE.test(line)) break
+      if (!line || /^[*\u2022]\s*$/.test(line)) continue
+      if (!buf.length) {
+        if (!DATE_START.test(line)) continue
+      } else if (
+        new RegExp(`^${FULL_DATE}\\s*$`, 'i').test(line) &&
+        buf.length >= 5 &&
+        !/^(releases?|released|sent|paid|expected|estimated|arrives?|arrived)(\s+on)?$/i.test(buf[buf.length - 1])
+      ) {
+        // A new bare payout date while the previous row never reached an amount
+        flush()
+      }
+      buf.push(line)
+      if (ENDS_WITH_MONEY.test(line)) flush()
+      else if (buf.length > 12) flush()
     }
-    buf.push(line)
-    if (ENDS_WITH_MONEY.test(line)) flush()
-    else if (buf.length > 12) flush()
+    flush()
+    for (const k of seenHere) seenBefore.add(k)
+    seenHere = new Set()
   }
-  flush()
   if (!payments.length && headerAt < 0) return null
 
   // ---------------------------------------------------------- summary cards

@@ -308,6 +308,31 @@ describe('unfamiliar and unreadable rows', () => {
   })
 })
 
+describe('several pages pasted together', () => {
+  const P1 = ALL.slice(0, 5)
+  const P2 = ALL.slice(5)
+  it('reads the rows of every pasted page, in any order', () => {
+    for (const t of [page(P1) + '\n' + page(P2), page(P2) + '\n' + page(P1), dashboardCells({ lifetime: LIFE, rows: P1, projects: [] }) + '\n' + page(P2)]) {
+      const r = parseDashboardText(t, { now: NOW })
+      expect(r.payments).toHaveLength(ALL.length)
+      expect(r.unparsedLines).toEqual([])
+      expect(r.summary.lifetimeCents).toBe(708504)
+    }
+  })
+  it('counts a page pasted twice only once, but keeps identical rows within one page', () => {
+    expect(parseDashboardText(page(P1) + '\n' + page(P2) + '\n' + page(P2), { now: NOW }).payments).toHaveLength(ALL.length)
+    const twin = parseDashboardText(page([R.draftInc1, R.draftInc1]), { now: NOW })
+    expect(twin.payments).toHaveLength(2)
+  })
+  it('imports page 2 after page 1 without duplicates', async () => {
+    const db = new MemoryDb()
+    await sync(db, page(P1))
+    await sync(db, page(P2))
+    await sync(db, page(P1) + '\n' + page(P2))
+    expect(stored(db)).toHaveLength(ALL.length)
+  })
+})
+
 describe('genuinely new rows mixed with existing ones', () => {
   const newWeek: Row = { payout: 'Dec 9, 2026', contract: 'Drafter', type: 'Contracts (Nov 28 - Dec 4)', status: 'Upcoming', release: 'Releases Dec 9, 2026', hours: '6.00', earned: '$510.00' }
   const newContract: Row = { payout: 'Dec 9, 2026', contract: 'Zeta Review', type: 'Contracts (Nov 28 - Dec 4)', status: 'Upcoming', release: 'Releases Dec 9, 2026', hours: '3.00', earned: '$195.00' }

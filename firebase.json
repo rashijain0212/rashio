@@ -57,29 +57,7 @@
       "redirects": [
         {
           "source": "/:path*",
-          "destination": "https://mychaching.web.app/:path*",
-          "type": 301
-        }
-      ]
-    },
-    {
-      "target": "legacy2",
-      "public": "legacy-redirect",
-      "redirects": [
-        {
-          "source": "/:path*",
-          "destination": "https://mychaching.web.app/:path*",
-          "type": 301
-        }
-      ]
-    },
-    {
-      "target": "legacy3",
-      "public": "legacy-redirect",
-      "redirects": [
-        {
-          "source": "/:path*",
-          "destination": "https://mychaching.web.app/:path*",
+          "destination": "https://my-chaching.web.app/:path*",
           "type": 301
         }
       ]

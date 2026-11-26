@@ -5,14 +5,15 @@ Paste the text of your earnings page, and ChaChing parses it,
 syncs it to your own Firestore space without creating duplicates, and shows
 earnings by **work period** (not payout date) on a pastel dashboard.
 
-Live: https://mychaching.web.app
+Live: https://my-chaching.web.app
 
 ## Features
 
 - **Smart importer:** deterministic parser (no AI APIs) for summary cards,
   projects and every payout row: contract, type, work period, hours, earnings,
   rate, status, and payout and release dates. It handles both table copies and
-  one-cell-per-line copies.
+  one-cell-per-line copies, and several pages pasted at once (a page pasted
+  twice counts once).
 - **Safe sync:** matches on contract, type and work period, never on amounts or
   hours. Changed amounts, hours and statuses update in place. Legitimate twin
   incentives are kept. Unclear cases go to a review screen. Missing rows are
@@ -25,8 +26,8 @@ Live: https://mychaching.web.app
   effective rate, and per-contract and per-project totals. When a work period
   crosses a month, it is split by days and marked *est.*, or you can enter the
   exact split.
-- **Pages:** Overview, Monthly, All payments (search, filter, add, edit,
-  delete, inline status), Import & Sync, Analytics, and Settings (rates, cycle
+- **Pages:** Overview, Monthly, All payments (search and filters on one line,
+  add, edit, delete, inline status), Import & Sync, Analytics, and Settings (rates, cycle
   day, CSV and JSON export, JSON restore).
 
 ## Stack
@@ -48,6 +49,22 @@ npm run dev            # http://localhost:5173  (add ?demo for synthetic data, d
 npm run check          # lint + typecheck + unit tests + build
 npm run test:rules     # Firestore rules tests (needs Java for the emulator)
 ```
+
+## Tests
+
+Every fix or feature lands with a test that fails without it, built only from
+synthetic data. `npm run check` must pass before anything is deployed.
+
+| Area | File |
+| --- | --- |
+| Paste parsing, sync, undo, multi-page pastes | `src/lib/dashboardSync.test.ts`, `src/lib/parser.test.ts`, `src/lib/sync.test.ts` |
+| Totals and calculations | `src/lib/calc.test.ts`, `src/lib/projects.test.ts` |
+| Backups and storage | `src/lib/persistence.test.ts` |
+| Spreadsheet copy | `src/lib/sheets.test.ts` |
+| Page layout contracts | `src/pages/*.test.ts` |
+| Repository hygiene and hosting setup | `src/lib/repoGuard.test.ts` |
+| Database rules | `tests/rules/` (`npm run test:rules`) |
+| Real data (your Mac only, skipped in CI) | `src/lib/realSample.test.ts` reads `private/` |
 
 ## Deploy
 

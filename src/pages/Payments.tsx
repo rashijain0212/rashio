@@ -59,7 +59,7 @@ export default function Payments() {
         }
       />
       <Card className="mb-3">
-        <CardContent className="grid grid-cols-2 gap-2 pt-3 md:grid-cols-4 lg:grid-cols-8">
+        <CardContent className="grid grid-cols-2 items-end gap-2 pt-3 md:grid-cols-4 lg:grid-cols-8">
           <div className="relative col-span-2">
             <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-ink-faint" />
             <Input aria-label="Search" placeholder="Search contract, notes, amount…" value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" />
