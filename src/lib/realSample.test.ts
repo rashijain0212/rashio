@@ -48,6 +48,18 @@ describe.runIf(existsSync(RELEASED_IN_TRANSIT))('real paste with a released payo
   })
 })
 
+const HEADLINE_AHEAD = resolve(import.meta.dirname, '../../private/paste-2026-11-27.txt')
+
+describe.runIf(existsSync(HEADLINE_AHEAD))('real paste whose headline runs ahead of the listed payments (private, local only)', () => {
+  it('reads cleanly and the chart total equals the project cards', () => {
+    const r = parseDashboardText(readFileSync(HEADLINE_AHEAD, 'utf8'), { now: new Date('2026-11-27T18:00:00Z') })
+    expect(r.unparsedLines).toEqual([])
+    expect(r.warnings).toEqual([])
+    expect(r.projects.reduce((a, p) => a + (p.earningsCents ?? 0), 0)).toBe(r.summary.chartTotalCents)
+    expect(r.summary.lifetimeCents! > r.summary.chartTotalCents!).toBe(true)
+  })
+})
+
 const BACKUP = resolve(import.meta.dirname, '../../private/sheet-backup.json')
 
 describe.runIf(existsSync(FILE) && existsSync(BACKUP))('real backup + real dashboard paste (private, local only)', () => {

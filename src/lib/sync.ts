@@ -5,6 +5,8 @@
 import type { ParsedPayment, ParseResult, ParsedProject, ParsedSummary, Payment, ReconciliationLine, Settings } from './types'
 import { contractRates, inferRate, normalizeName } from './rates'
 import { toDayNumber } from './dates'
+import { formatCents } from './money'
+import { compareTotals } from './totals'
 
 export type FieldName =
   | 'hours'
@@ -457,35 +459,41 @@ export function reconcile(
   const lines: ReconciliationLine[] = []
   const s = parsed.summary
   const after = sum(finalState(existing, plan, resolutions))
+  // Itemised totals first: they add up the payments the dashboard lists, so they
+  // are what the tracked payments should equal (see totals.ts).
+  if (s.chartTotalCents != null) {
+    lines.push({
+      label: '"Earnings over time" chart total vs your tracked total after sync',
+      expectedCents: s.chartTotalCents,
+      actualCents: after,
+      diffCents: s.chartTotalCents - after,
+      note: s.chartTotalCents === after ? 'Every payment the dashboard lists is accounted for.' : 'The chart refreshes separately. Your records are not changed to match it.',
+    })
+  }
+  if (parsed.projects.length) {
+    const proj = parsed.projects.reduce((a, p) => a + (p.earningsCents ?? 0), 0)
+    lines.push({
+      label: 'Sum of project totals vs your tracked total after sync',
+      expectedCents: proj,
+      actualCents: after,
+      diffCents: proj - after,
+      note: proj === after ? undefined : 'Project cards refresh separately.',
+    })
+  }
   if (s.lifetimeCents !== null) {
+    const cmp = compareTotals(after, s, parsed.projects)
     lines.push({
       label: '"Total earnings to date" vs your tracked total after sync',
       expectedCents: s.lifetimeCents,
       actualCents: after,
       diffCents: after - s.lifetimeCents,
+      info: cmp.unlisted > 0,
       note:
         after === s.lifetimeCents
-          ? 'Every dollar The dashboard reports is accounted for.'
+          ? 'Every dollar the dashboard reports is accounted for.'
+          : cmp.unlisted > 0
+          ? `The headline also counts ${formatCents(cmp.unlisted)} that is not listed as a payment yet (usually hours still being logged). Nothing to fix: it appears as a payment in a later paste.`
           : 'Often temporary (the dashboard sections refresh at different times) or caused by older payments not on this page.',
-    })
-  }
-  if (s.chartTotalCents != null && s.lifetimeCents !== null) {
-    lines.push({
-      label: '"Earnings over time" chart vs dashboard total',
-      expectedCents: s.lifetimeCents,
-      actualCents: s.chartTotalCents,
-      diffCents: s.chartTotalCents - s.lifetimeCents,
-      note: 'Informational: the chart refreshes separately. Your records are not changed to match it.',
-    })
-  }
-  if (parsed.projects.length && s.lifetimeCents !== null) {
-    const proj = parsed.projects.reduce((a, p) => a + (p.earningsCents ?? 0), 0)
-    lines.push({
-      label: 'Sum of project totals vs dashboard total',
-      expectedCents: s.lifetimeCents,
-      actualCents: proj,
-      diffCents: proj - s.lifetimeCents,
-      note: proj === s.lifetimeCents ? undefined : 'Informational: project cards refresh separately.',
     })
   }
   return lines

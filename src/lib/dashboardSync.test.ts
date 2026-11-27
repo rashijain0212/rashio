@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { parseDashboardText } from './parser'
 import { laDateISO, parseRow } from './dashboard'
 import { finalState, planImport, resolveContract } from './sync'
+import { compareTotals } from './totals'
 import { commitImportEx, MemoryDb, restoreBackup, savePayment, ConflictError } from './store'
 import { lifetimeTotals } from './calc'
 import { DEFAULT_SETTINGS, type Payment } from './types'
@@ -208,7 +209,9 @@ describe('incremental sync on top of history', () => {
     const db = await seeded()
     const { plan, parsed } = await sync(db, page(ALL, { chart: '$7,076.79' }))
     const chart = plan.reconciliation.find((l) => l.label.includes('chart'))!
-    expect(chart.diffCents).toBe(-825)
+    // The chart is kept as its own figure and compared with the tracked payments, not forced to match
+    expect(chart.expectedCents).toBe(707679)
+    expect(chart.diffCents).toBe(707679 - chart.actualCents)
     expect(parsed.summary.lifetimeCents).toBe(708504)
     expect(lifetimeTotals(stored(db)).totalCents).toBe(lifetimeTotals(finalState(history(), plan, {})).totalCents)
   })
@@ -447,5 +450,38 @@ describe('undo is a full revert', () => {
     expect(meta.lastSyncAt).toBe(metaAfterFirst.lastSyncAt)
     expect(stored(db).find((p) => p.id === 'h1')!.earningsCents).toBe(17000)
     void first
+  })
+})
+
+describe('headline total ahead of the listed payments', () => {
+  // The headline also counts hours not listed as a payment yet; the chart and project cards do not.
+  const AHEAD = '$7,112.46' // LIFE + $27.42
+  const warnings = (plan: { reconciliation: { diffCents: number | null; info?: boolean }[] }) => plan.reconciliation.filter((l) => l.diffCents !== 0 && !l.info)
+
+  it('import screen: chart and project totals match, the headline gap is a note, not a warning', async () => {
+    const db = new MemoryDb()
+    const { plan, parsed } = await sync(db, page(ALL, { lifetime: AHEAD, chart: LIFE }))
+    expect(warnings(plan)).toEqual([])
+    const head = plan.reconciliation.find((l) => l.label.startsWith('"Total earnings to date"'))!
+    expect(head).toMatchObject({ diffCents: -2742, info: true })
+    expect(head.note).toContain('$27.42')
+    expect(plan.reconciliation.find((l) => l.label.includes('chart'))!.diffCents).toBe(0)
+    expect(plan.reconciliation.find((l) => l.label.startsWith('Sum of project'))!.diffCents).toBe(0)
+    // Overview after saving: no banner
+    const tracked = lifetimeTotals(stored(db)).totalCents
+    expect(compareTotals(tracked, parsed.summary, parsed.projects)).toMatchObject({ diff: 0, unlisted: 2742 })
+  })
+
+  it('same in the cell-per-line layout', async () => {
+    const db = new MemoryDb()
+    const { plan } = await sync(db, dashboardCells({ lifetime: AHEAD, chart: LIFE, rows: ALL, projects: [{ name: 'Alpha', total: '$4,000.00', active: true }, { name: 'Beta', total: '$3,085.04', active: false }] }))
+    expect(warnings(plan)).toEqual([])
+  })
+
+  it('still warns when a listed payment is missing from the records', async () => {
+    const db = new MemoryDb()
+    const { plan } = await sync(db, page(ALL, { lifetime: AHEAD, chart: '$7,200.00' }))
+    expect(warnings(plan).length).toBeGreaterThan(0)
+    expect(plan.reconciliation.some((l) => l.info)).toBe(false)
   })
 })

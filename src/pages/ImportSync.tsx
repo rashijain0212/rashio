@@ -94,6 +94,7 @@ function Reconciliation({ lines }: { lines: ReconciliationLine[] }) {
             <Td className="num">{formatCents(l.actualCents)}</Td>
             <Td className="num whitespace-nowrap">
               {l.diffCents === 0 ? <span className="inline-flex items-center gap-1 rounded bg-paid px-1.5 text-paid-ink"><CheckCircle2 className="size-3" />Match</span>
+                : l.info ? <span className="rounded bg-support px-1.5 text-ink-soft" title="Not listed as a payment yet">{signed(l.diffCents ?? 0)} not listed yet</span>
                 : <span className="rounded bg-pending px-1.5 text-pending-ink">{signed(l.diffCents ?? 0)}</span>}
             </Td>
           </tr>
@@ -240,7 +241,8 @@ export default function ImportSync() {
   }
 
   const changed = [...by('new'), ...by('update')]
-  const reconWarn = view?.recon.filter((l) => l.diffCents !== 0) ?? []
+  const reconWarn = view?.recon.filter((l) => l.diffCents !== 0 && !l.info) ?? []
+  const reconInfo = view?.recon.filter((l) => l.diffCents !== 0 && l.info) ?? []
 
   const step = done ? 3 : ready && plan ? 2 : 1
 
@@ -410,6 +412,13 @@ export default function ImportSync() {
                     <div className="flex items-center gap-1.5 font-semibold"><Info className="size-3.5" /> This snapshot may be older than your saved records</div>
                     {view.mc.staleSummary && <div>• Its dashboard total ({formatCents(result.summary.lifetimeCents)}) is lower than the saved one ({formatCents(meta.summary?.lifetimeCents ?? null)}), so your saved dashboard totals are kept.</div>}
                     {view.mc.staleProjects && <div>• Some project totals are lower than the saved ones, so the saved project totals are kept.</div>}
+                  </div>
+                )}
+
+                {reconInfo.length > 0 && reconWarn.length === 0 && !view.mc.staleSummary && (
+                  <div className="mt-3 rounded-lg bg-paid/40 px-3 py-2 text-xs text-paid-ink">
+                    <div className="flex items-center gap-1.5 font-semibold"><CheckCircle2 className="size-3.5" /> Totals match every payment the dashboard lists</div>
+                    {reconInfo.map((l) => <div key={l.label}>{l.note}</div>)}
                   </div>
                 )}
 

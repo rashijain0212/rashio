@@ -178,5 +178,7 @@ export interface ReconciliationLine {
   expectedCents: number | null
   actualCents: number
   diffCents: number | null
+  /** Expected and explained (not a warning) */
+  info?: boolean
   note?: string
 }

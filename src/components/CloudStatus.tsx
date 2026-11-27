@@ -2,6 +2,7 @@ import { Cloud, CloudOff, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-re
 import { Link } from 'react-router-dom'
 import { useData } from '@/hooks/data'
 import { formatCents } from '@/lib/money'
+import { compareTotals } from '@/lib/totals'
 import { cn } from '@/lib/utils'
 
 export function timeAgo(ms: number | null): string {
@@ -35,13 +36,13 @@ export function CloudStatusBadge({ className, compact }: { className?: string; c
 export function useReconciliation() {
   const { payments, meta } = useData()
   const tracked = payments.filter((p) => p.status !== 'failed').reduce((a, p) => a + p.earningsCents, 0)
-  const reported = meta.summary?.lifetimeCents ?? null
-  const diff = reported === null ? null : reported - tracked
+  // Matches when every payment the dashboard lists is tracked; the headline may run ahead (see totals.ts).
+  const { reported, diff, unlisted } = compareTotals(tracked, meta.summary, meta.projects)
   const summaryNewer = !!meta.lastSummaryAt && (!meta.lastSyncAt || meta.lastSummaryAt > meta.lastSyncAt)
   const a = meta.reconAccepted
   // Accepted only while BOTH totals are exactly what the user accepted.
   const accepted = !!a && diff !== null && diff !== 0 && a.trackedCents === tracked && a.reportedCents === reported
-  return { tracked, reported, diff, summaryNewer, accepted }
+  return { tracked, reported, diff, unlisted, summaryNewer, accepted }
 }
 
 export function SyncSummary() {
@@ -55,7 +56,7 @@ export function SyncSummary() {
       {meta.lastSummaryAt && <div title={new Date(meta.lastSummaryAt).toLocaleString()}>Dashboard totals saved <span className="font-medium text-ink">{timeAgo(meta.lastSummaryAt)}</span></div>}
       {r.diff !== null && (
         r.diff === 0
-          ? <div className="text-paid-ink">✓ Matches dashboard total</div>
+          ? <div className="text-paid-ink" title={r.unlisted ? `The dashboard headline is ${formatCents(r.unlisted)} higher for work not listed as a payment yet` : undefined}>✓ Matches dashboard total</div>
           : r.accepted
           ? <div>Difference of {formatCents(Math.abs(r.diff))} accepted</div>
           : <Link to="/" className="block text-pending-ink underline">⚠ {formatCents(Math.abs(r.diff))} {r.diff > 0 ? 'not yet tracked' : 'more than the dashboard'}</Link>

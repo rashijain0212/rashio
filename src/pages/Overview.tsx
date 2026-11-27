@@ -368,6 +368,7 @@ function ReconStatus() {
     return (
       <span className="inline-flex items-center gap-1.5 text-paid-ink">
         <CheckCircle2 className="size-4" /> Tracked total matches reported earnings
+        {r.unlisted > 0 && <span className="text-ink-soft">· the headline also counts {formatCents(r.unlisted)} not listed as a payment yet</span>}
       </span>
     )
   if (r.accepted) return <span className="text-ink-soft">Showing your saved payments only (difference accepted)</span>
